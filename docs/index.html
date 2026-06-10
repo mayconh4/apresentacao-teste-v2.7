@@ -543,4 +543,219 @@ function renderBarber(){
     main.innerHTML=h; return;
   }
   if(S.tab==="rede"){
-    const stars=n=>`<span class="r
+    const stars=n=>`<span class="rstar">${ICONS.star.replace('width="23" height="23"','width="13" height="13"')}</span> ${n.toFixed(1)}`;
+    h+=`<div class="eyebrow">BarberHub Rede</div><h1 class="bg">Conecte-se</h1>
+      <div class="hint" style="margin-top:-8px;margin-bottom:14px">${dono?'Publique vagas e encontre freelancers perto de você.':'Veja vagas abertas e deixe seu perfil visível para as barbearias.'}</div>
+      <div class="seg">
+        <div class="segi ${S.redeView!=='profs'?'on':''}" data-a="rede:vagas">Vagas abertas</div>
+        <div class="segi ${S.redeView==='profs'?'on':''}" data-a="rede:profs">Profissionais</div>
+      </div>`;
+    if(S.redeView!=='profs'){
+      if(dono){
+        if(S.newVaga){
+          h+=`<div class="box" style="margin-bottom:14px">
+            <div class="field"><label>Quando</label><input id="vgQuando" placeholder="Ex.: Sáb · 10h às 18h"></div>
+            <div class="slrow" style="margin:4px 0 12px"><span class="sllbl">Comissão oferecida</span><span class="slval"><input type="number" id="vgComm" min="0" max="100" value="50" style="width:70px;text-align:right">%</span></div>
+            <button class="btn" data-a="postvaga" style="margin:0">Publicar vaga</button>
+          </div>`;
+        } else {
+          h+=`<button class="btn" data-a="newvaga" style="margin:0 0 14px">+ Publicar vaga</button>`;
+        }
+      }
+      vagas.forEach((v,i)=>{
+        let act="";
+        if(dono && v.minha) act=`<span class="chip ok">Sua vaga · ${v.cand} candidato${v.cand===1?'':'s'}</span>`;
+        else if(!dono) act = v.applied?`<span class="chip ok">Candidatura enviada</span>`:`<button class="btn out small" data-a="apply:${i}">Candidatar-se</button>`;
+        else act=`<span class="chip" style="background:rgba(10,132,255,.12);color:var(--accent)">${v.cand} candidatos</span>`;
+        h+=`<div class="box" style="margin-bottom:12px">
+          <div style="display:flex;align-items:flex-start;gap:12px">
+            <div class="av">${ini(v.barbearia)}</div>
+            <div style="flex:1"><div class="nm" style="font-size:16px">${v.barbearia}</div><div class="sb">${v.local}</div></div>
+            <div class="pr">${v.comissao}%</div>
+          </div>
+          <div class="fidwrap" style="border-top-color:rgba(0,0,0,.05);justify-content:space-between">
+            <span class="sb" style="margin:0">${v.quando}</span>${act}
+          </div></div>`;
+      });
+    } else {
+      profissionais.forEach((p,i)=>{
+        let act="";
+        if(dono) act = p.invited?`<span class="chip ok">Convidado</span>`:`<button class="btn out small" data-a="invite:${i}">Convidar</button>`;
+        h+=`<div class="box" style="margin-bottom:12px">
+          <div style="display:flex;align-items:center;gap:12px">
+            <div class="av">${ini(p.nome)}</div>
+            <div style="flex:1"><div class="nm" style="font-size:16px">${p.nome}</div><div class="sb">${p.esp.join(" · ")}</div></div>
+            <div style="text-align:right"><div class="sb" style="display:flex;align-items:center;gap:3px;justify-content:flex-end">${stars(p.nota)}</div><div class="sb">${p.dist}</div></div>
+          </div>
+          ${act?`<div class="fidwrap" style="border-top-color:rgba(0,0,0,.05);justify-content:flex-end">${act}</div>`:""}
+        </div>`;
+      });
+      if(!dono) h+=`<div class="hint">Seu perfil também aparece aqui para as barbearias da região.</div>`;
+    }
+    main.innerHTML=h; return;
+  }
+  if(S.tab==="dash"){
+    const nome = profile? (profile.respNome||profile.nomeFantasia) : "João Silva";
+    h+=`<div class="eyebrow">${nome} · Hoje</div><h1 class="bg">Resumo do dia</h1>`;
+    if(profile) h+=`<span class="badge ok">Conta Asaas ativa</span>`;
+    h+=`<div class="kpis">
+      <div class="kpi"><span class="l">Cortes</span><span class="v">${nCortes(list)}</span></div>
+      <div class="kpi"><span class="l">Faturado</span><span class="v">${fmt(faturamento(list))}</span></div>
+      <div class="kpi"><span class="l">Comissão 40%</span><span class="v">${fmt(comissao(list,.4))}</span></div>
+    </div><div class="eyebrow" style="margin:22px 0 10px">Mais vendidos</div>`;
+    const cnt={}; list.filter(a=>a.status==="pago").forEach(a=>{const n=services.find(s=>s.id===a.service).nome; cnt[n]=(cnt[n]||0)+1;});
+    Object.entries(cnt).sort((a,b)=>b[1]-a[1]).forEach(([n,c])=> h+=`<div class="lr"><span>${n}</span><span class="c">${c}x</span></div>`);
+
+    h+=`<div class="eyebrow" style="margin:22px 0 10px">Política de faltas</div>
+      <div class="box">
+        <div class="boxtxt">Quem falta <b>não recebe estorno</b>. Como cortesia, ofereça um desconto no próximo corte do cliente que faltou.</div>
+        <div class="slrow">
+          <span class="sllbl">Desconto no próximo corte</span>
+          <span class="slval" id="nsVal">${noShowDiscount}%</span>
+        </div>
+        <input type="range" min="0" max="50" step="5" value="${noShowDiscount}" id="nsRange" oninput="setNoShow(this.value)">
+        <div class="boxtxt" style="margin-top:6px;font-size:12px;color:var(--mut)">Ex.: corte de R$ 45,00 sairá por <b id="nsEx">${fmt(45*(1-noShowDiscount/100))}</b> para quem faltou.</div>
+      </div>`;
+  }
+  if(S.tab==="agenda"){
+    h+=`<div class="eyebrow">Hoje</div><h1 class="bg">Agenda</h1>`;
+    const lab={pago:"Pago",aguardando:"Aguarda",cancelado:"Cancelado"};
+    const bg={pago:"rgba(52,199,89,.18)",aguardando:"rgba(255,159,10,.2)",cancelado:"rgba(255,69,58,.18)"};
+    const fg={pago:"#1f8f3e",aguardando:"#a86400",cancelado:"#c0271f"};
+    list.slice().sort((a,b)=>a.min-b.min).forEach(a=>{
+      const s=services.find(x=>x.id===a.service);
+      const cortes = fidelidade[a.cliente]||0;
+      const free = cortes>0 && cortes%10===0;
+      const filled = free ? 10 : cortes%10;
+      let segs=""; for(let i=0;i<10;i++) segs+=`<div class="fseg ${i<filled?(free?'free':'on'):''}"></div>`;
+      const giftSm=`<svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13" style="vertical-align:-2px;margin-right:3px"><path d="M11 8H4.6c-.6 0-1.1.5-1.1 1.1v2.3c0 .4.3.7.7.7H11V8Zm2 0v4.1h6.8c.4 0 .7-.3.7-.7V9.1c0-.6-.5-1.1-1.1-1.1H13Zm-2 6H5v6.1c0 .5.4.9.9.9H11v-7Zm2 0v7h5.1c.5 0 .9-.4.9-.9V14h-6ZM8.2 3.3C9.7 2.8 11 4.4 11.6 6.3H9.9c-1.1 0-2.1-.5-2.4-1.4-.2-.7.1-1.4.7-1.6Zm7.6 0c.6.2.9.9.7 1.6-.3.9-1.3 1.4-2.4 1.4h-1.7C13 4.4 14.3 2.8 15.8 3.3Z"/></svg>`;
+      const flbl = free ? `<span class="fidlbl free">${giftSm}Próximo grátis</span>` : `<span class="fidlbl">${filled}/10</span>`;
+      h+=`<div class="ag" style="flex-direction:column;align-items:stretch;gap:11px">
+        <div style="display:flex;align-items:center;gap:14px">
+          <div class="hm">${hhmm(a.min)}</div>
+          <div style="flex:1"><div class="who" style="${a.status==='cancelado'?'text-decoration:line-through;color:var(--mut)':''}">${a.cliente}</div><div class="sv">${s.nome} · ${fmt(a.valor)}</div></div>
+          <div class="chip" style="background:${bg[a.status]};color:${fg[a.status]}">${lab[a.status]}</div>
+        </div>
+        <div class="fidwrap"><div class="fid">${segs}</div>${flbl}</div>
+      </div>`;
+    });
+  }
+  if(S.tab==="metas"){
+    const atual=faturamento(list)*40; const meta=10000; const p=Math.min(atual/meta,1);
+    h+=`<div class="eyebrow">Junho</div><h1 class="bg">Metas</h1>`;
+    h+=`<div class="kpi"><span class="l">Meta do mês</span><span class="v">${fmt(meta)}</span></div>`;
+    h+=`<div class="bar"><div style="width:${(p*100).toFixed(0)}%"></div></div>`;
+    h+=`<div class="hint">${fmt(atual)} · ${(p*100).toFixed(0)}% atingido</div>`;
+    h+=`<div class="eyebrow" style="margin:24px 0 10px">Fidelização</div>`;
+    h+=`<div class="lr"><span>Carlos · 9 cortes</span><span class="c">falta 1 p/ grátis</span></div>`;
+    lembretes.forEach(c=>{
+      const msg=`Olá ${c.nome}! 💈 Já faz ${c.dias} dias do seu último corte na ${profile?profile.nomeFantasia:'BarberHub'}. Que tal renovar o visual? Temos horários livres. Quer que eu reserve um pra você?`;
+      const url=`https://wa.me/55${c.zap.replace(/\D/g,'')}?text=${encodeURIComponent(msg)}`;
+      h+=`<div class="lr"><div><b>${c.nome}</b><div class="c" style="font-size:12px">${c.dias} dias sem cortar</div></div>
+        <a class="wabtn" href="${url}" target="_blank" rel="noopener"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-8.6 15l-1.3 4.7 4.8-1.3A10 10 0 1 0 12 2zm5.9 14.3c-.2.7-1.4 1.3-2 1.4-.5.1-1.2.1-1.9-.1-.4-.1-1-.3-1.7-.6-3-1.3-4.9-4.3-5-4.5-.2-.2-1.2-1.6-1.2-3s.7-2.1 1-2.4c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.5l.8 2c.1.1.1.3 0 .5l-.4.5-.3.3c-.2.2-.3.4-.2.6.2.4.8 1.3 1.6 2 .9.9 1.7 1.1 2 1.3.2.1.4.1.6-.1l.7-.9c.2-.2.4-.2.6-.1l1.9.9c.3.1.4.2.5.3.1.2.1.7-.1 1.3z"/></svg>Lembrar</a></div>`;
+    });
+  }
+  main.innerHTML=h;
+}
+
+function render(){
+  if(S.role==="client") renderClient();
+  else if(S.role==="chooseType") renderChooseType();
+  else if(S.role==="onboarding") renderOnboarding();
+  else if(S.role==="account") renderAccount();
+  else renderBarber();
+}
+
+main.addEventListener("click", e=>{
+  const t=e.target.closest("[data-a]"); if(!t) return;
+  const a=t.dataset.a;
+  if(a.startsWith("b:")){ S.barber=a.slice(2); S.step=2; }
+  else if(a.startsWith("s:")){ S.service=services.find(s=>s.id===a.slice(2)); S.time=null; S.step=3; }
+  else if(a.startsWith("t:")){ S.time=+a.slice(2); }
+  else if(a==="next"){ S.step=4; S.pixGen=false; }
+  else if(a==="genpix"){
+    const nome=document.getElementById("pgNome"), cpf=document.getElementById("pgCpf"), zap=document.getElementById("pgZap");
+    let bad=null; [nome,cpf,zap].forEach(el=>{ if(!el.value.trim()){ el.classList.add("err"); if(!bad)bad=el; } else el.classList.remove("err"); });
+    if(bad){ document.getElementById("payerr").innerHTML=`<div class="errmsg">Preencha nome, CPF e WhatsApp.</div>`; bad.focus(); return; }
+    S.payer={ nome:nome.value.trim(), cpf:cpf.value.trim(), zap:zap.value.trim() };
+    S.pixGen=true; render(); return;
+  }
+  else if(a==="fillpay"){
+    S.payer={ nome:"Maycon Souza", cpf:"123.456.789-00", zap:"(11) 98888-7777" };
+    S.pixGen=true; render(); return;
+  }
+  else if(a==="pay"){
+    const nomeCli = (S.payer&&S.payer.nome)||"Você";
+    appointments.push({ id:"new", barbeiro:S.barber==="any"?"b1":S.barber, cliente:nomeCli, service:S.service.id, min:S.time, valor:S.service.preco, status:"pago" });
+    let c=(fidelidade[nomeCli]||0); c = (c%10===0 && c>0) ? 1 : c+1; fidelidade[nomeCli]=c;
+    clearInterval(timerInt);
+    document.getElementById("paybox").innerHTML=`<div class="ok"><b>Pagamento confirmado</b><p>Seu horário está reservado. Após o corte, avalie o atendimento.</p></div><button class="btn" data-a="rate">Avaliar atendimento</button><button class="btn out" data-a="reset">Novo agendamento</button>`;
+    return;
+  }
+  else if(a==="rate"){ S.step=5; S.stars=0; S.rated=false; }
+  else if(a.startsWith("star:")){ S.stars=+a.slice(5); render(); return; }
+  else if(a==="sendrate"){
+    if(!S.stars){ document.querySelector(".ratelabel").innerHTML='<span style="color:var(--cancel)">Escolha de 1 a 5 estrelas</span>'; return; }
+    S.rated=true; render(); return;
+  }
+  else if(a==="reset"){ S.step=1; S.barber=null; S.service=null; S.time=null; S.pixGen=false; S.payer=null; S.stars=0; S.rated=false; }
+  else if(a==="save"){ saveOnboarding(); return; }
+  else if(a==="skip"){
+    profile={ nomeFantasia:"BarberHub Centro", razao:"João Silva ME", cpfCnpj:"12345678000190", companyType:"MEI",
+      incomeValue:"8000", respNome:"João Silva", respCpf:"12345678900", birthDate:"1990-05-10",
+      email:"joao@barberhub.com", mobilePhone:"(11) 99999-9999", postalCode:"01001-000", cidade:"São Paulo",
+      address:"Praça da Sé", addressNumber:"100", uf:"SP", province:"Sé", complement:"", pixKey:"joao@barberhub.com", tipo:S.barberType||"dono" };
+    if(!barbers.find(b=>b.id==="me")) barbers.push({ id:"me", nome:profile.respNome, esp:["Novo"], pct:.4 });
+    S.role="barber"; S.tab="dash"; render(); return;
+  }
+  else if(a.startsWith("rede:")){ S.redeView=a.slice(5); }
+  else if(a==="newvaga"){ S.newVaga=true; }
+  else if(a==="postvaga"){
+    const q=document.getElementById("vgQuando"), c=document.getElementById("vgComm");
+    if(!q.value.trim()){ q.classList.add("err"); q.focus(); return; }
+    vagas.unshift({ barbearia:(profile&&profile.nomeFantasia)||"Minha barbearia", local:"Sua região · 0 km", quando:q.value.trim(), comissao:Math.max(0,Math.min(100,+c.value||0)), minha:true, applied:false, cand:0 });
+    S.newVaga=false; render(); return;
+  }
+  else if(a.startsWith("apply:")){ vagas[+a.split(":")[1]].applied=true; render(); return; }
+  else if(a.startsWith("invite:")){ profissionais[+a.split(":")[1]].invited=true; render(); return; }
+  else if(a==="addfree"){
+    const n=document.getElementById("freeNome"), c=document.getElementById("freeComm");
+    if(!n.value.trim()){ n.classList.add("err"); n.focus(); return; }
+    team.push({ nome:n.value.trim(), comissao:Math.max(0,Math.min(100,+c.value||0)) });
+    render(); return;
+  }
+  else if(a.startsWith("delfree:")){ team.splice(+a.split(":")[1],1); render(); return; }
+  else if(a.startsWith("type:")){ S.barberType=a.slice(5); S.role="onboarding"; }
+  else if(a==="toOnboard"){ S.role = S.barberType ? "onboarding" : "chooseType"; }
+  else if(a==="toDash"){ S.role="barber"; S.tab="dash"; }
+  else if(a==="toClient"){ S.role="client"; S.step=1; }
+  render();
+});
+
+const menu = document.getElementById("menu");
+const userBtn = document.getElementById("userBtn");
+const I = { scissors:ICONS.scissors, user:ICONS.user, cut:ICONS.combo };
+function buildMenu(){
+  let h="";
+  if(S.role==="client") h+=`<div class="mi" data-m="barber">${I.scissors} Sou barbeiro</div>`;
+  else h+=`<div class="mi" data-m="client">${I.cut} Sou cliente</div>`;
+  h+=`<div class="sep"></div><div class="mi" data-m="account">${I.user} Minha conta</div>`;
+  menu.innerHTML=h;
+}
+function toggleMenu(open){ const show = open===undefined ? menu.hidden : open; if(show){ buildMenu(); menu.hidden=false; } else menu.hidden=true; }
+userBtn.addEventListener("click", e=>{ e.stopPropagation(); toggleMenu(); });
+document.addEventListener("click", ()=> toggleMenu(false));
+menu.addEventListener("click", e=>{
+  const t=e.target.closest("[data-m]"); if(!t) return;
+  const m=t.dataset.m; toggleMenu(false);
+  if(m==="barber"){ S.role = profile ? "barber" : "chooseType"; S.tab="dash"; }
+  else if(m==="client"){ S.role="client"; S.step=1; S.barber=null; S.service=null; S.time=null; }
+  else if(m==="account"){ S.role="account"; }
+  render();
+});
+tabbar.addEventListener("click", e=>{ const t=e.target.closest(".tab"); if(!t)return; S.tab=t.dataset.tab; render(); });
+
+render();
+</script>
+</body>
+</html>
