@@ -648,7 +648,8 @@ function renderBarber(){
   if(S.tab==="metas"){
     const mv = S.metaView||"mes";
     const meta = metas[mv], atual = realizado[mv], p = Math.min(atual/meta,1);
-    h+=`<div class="eyebrow">${metaLabels[mv].p}</div><h1 class="bg">Metas</h1>`;
+    const free = profile && profile.tipo==="freelancer";
+    h+=`<div class="eyebrow">${metaLabels[mv].p}</div><h1 class="bg">${free?"Minhas metas":"Metas"}</h1>`;
     h+=`<div class="seg">
       <div class="segi ${mv==='mes'?'on':''}" data-a="meta:mes">Mês</div>
       <div class="segi ${mv==='sem'?'on':''}" data-a="meta:sem">6 meses</div>
