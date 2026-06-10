@@ -225,6 +225,11 @@ let profile = null;
 // fidelidade: nº de cortes acumulados por cliente (10 = próximo grátis, depois zera)
 let fidelidade = { Carlos:9, Pedro:10, Rafael:6, Bruno:3, Tiago:1 };
 
+// metas por período + faturamento realizado (demo)
+let metas = { mes:10000, sem:55000, ano:110000 };
+let realizado = { mes:6200, sem:38400, ano:72500 };
+const metaLabels = { mes:{t:"Meta do mês",p:"Junho"}, sem:{t:"Meta de 6 meses",p:"Jan–Jun"}, ano:{t:"Meta do ano",p:"2026"} };
+
 // desconto que o barbeiro dá no próximo corte de quem faltou (sem estorno)
 let noShowDiscount = 10;
 function setNoShow(v){
@@ -641,11 +646,27 @@ function renderBarber(){
     });
   }
   if(S.tab==="metas"){
-    const atual=faturamento(list)*40; const meta=10000; const p=Math.min(atual/meta,1);
-    h+=`<div class="eyebrow">Junho</div><h1 class="bg">Metas</h1>`;
-    h+=`<div class="kpi"><span class="l">Meta do mês</span><span class="v">${fmt(meta)}</span></div>`;
-    h+=`<div class="bar"><div style="width:${(p*100).toFixed(0)}%"></div></div>`;
-    h+=`<div class="hint">${fmt(atual)} · ${(p*100).toFixed(0)}% atingido</div>`;
+    const mv = S.metaView||"mes";
+    const meta = metas[mv], atual = realizado[mv], p = Math.min(atual/meta,1);
+    h+=`<div class="eyebrow">${metaLabels[mv].p}</div><h1 class="bg">Metas</h1>`;
+    h+=`<div class="seg">
+      <div class="segi ${mv==='mes'?'on':''}" data-a="meta:mes">Mês</div>
+      <div class="segi ${mv==='sem'?'on':''}" data-a="meta:sem">6 meses</div>
+      <div class="segi ${mv==='ano'?'on':''}" data-a="meta:ano">1 ano</div>
+    </div>`;
+    if(S.metaEdit){
+      h+=`<div class="box">
+        <div class="field"><label>${metaLabels[mv].t} (R$)</label><input type="number" id="metaInput" value="${meta}" min="0"></div>
+        <button class="btn small" data-a="savemeta" style="width:100%">Salvar meta</button>
+      </div>`;
+    } else {
+      h+=`<div class="kpi"><span class="l">${metaLabels[mv].t}</span><span class="v">${fmt(meta)}</span></div>`;
+      h+=`<div class="bar"><div style="width:${(p*100).toFixed(0)}%"></div></div>`;
+      h+=`<div class="hint" style="display:flex;justify-content:space-between;align-items:center">
+        <span>${fmt(atual)} · ${(p*100).toFixed(0)}% atingido</span>
+        <button class="btn out small" data-a="metaedit">Configurar meta</button>
+      </div>`;
+    }
     h+=`<div class="eyebrow" style="margin:24px 0 10px">Fidelização</div>`;
     h+=`<div class="lr"><span>Carlos · 9 cortes</span><span class="c">falta 1 p/ grátis</span></div>`;
     lembretes.forEach(c=>{
@@ -708,6 +729,9 @@ main.addEventListener("click", e=>{
     if(!barbers.find(b=>b.id==="me")) barbers.push({ id:"me", nome:profile.respNome, esp:["Novo"], pct:.4 });
     S.role="barber"; S.tab="dash"; render(); return;
   }
+  else if(a.startsWith("meta:")){ S.metaView=a.slice(5); S.metaEdit=false; }
+  else if(a==="metaedit"){ S.metaEdit=true; }
+  else if(a==="savemeta"){ const v=+document.getElementById("metaInput").value||0; metas[S.metaView||"mes"]=Math.max(0,v); S.metaEdit=false; render(); return; }
   else if(a.startsWith("rede:")){ S.redeView=a.slice(5); }
   else if(a==="newvaga"){ S.newVaga=true; }
   else if(a==="postvaga"){
