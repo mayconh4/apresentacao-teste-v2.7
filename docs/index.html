@@ -6,7 +6,7 @@
 <title>SeuBarba</title>
 <style>
   :root{
-    --ink:#1c1c1e; --ink-2:#3a3a3c; --mut:#8e8e93; --accent:#0a84ff;
+    --ink:#1c1c1e; --ink-2:#3a3a3c; --mut:#8e8e93; --accent:#7E1E2B; --gold:#C2912E;
     --glass:rgba(255,255,255,.55); --glass-2:rgba(255,255,255,.4);
     --stroke:rgba(255,255,255,.6); --shadow:0 8px 30px rgba(31,38,75,.12);
     --pago:#34c759; --aguard:#ff9f0a; --cancel:#ff453a;
@@ -17,21 +17,21 @@
     font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",Inter,sans-serif;
     color:var(--ink); min-height:100vh;
     background:
-      radial-gradient(120% 120% at 0% 0%, #d7e8ff 0%, transparent 55%),
-      radial-gradient(120% 120% at 100% 0%, #ffe0ec 0%, transparent 50%),
-      radial-gradient(140% 140% at 100% 100%, #e3d9ff 0%, transparent 55%),
-      radial-gradient(120% 120% at 0% 100%, #d4fbef 0%, transparent 55%),
-      #f3f4fb;
+      radial-gradient(120% 120% at 0% 0%, #f0e4cf 0%, transparent 55%),
+      radial-gradient(120% 120% at 100% 0%, #f3ddd0 0%, transparent 50%),
+      radial-gradient(140% 140% at 100% 100%, #ecdcc4 0%, transparent 55%),
+      radial-gradient(120% 120% at 0% 100%, #efe7d3 0%, transparent 55%),
+      #f8f4ea;
     background-attachment:fixed;
   }
   .app{ max-width:440px; margin:0 auto; min-height:100vh; display:flex; flex-direction:column; padding:14px; }
   header{ display:flex; align-items:center; gap:8px; padding:8px 6px 16px; }
   .logo{ font-size:20px; font-weight:700; letter-spacing:-.02em; flex:1; }
-  .logo span{ color:#c8a13a; }
+  .logo span{ color:#C2912E; }
   .switch{ font-size:12px; font-weight:600; color:var(--accent); cursor:pointer;
     background:var(--glass-2); backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px);
     border:1px solid var(--stroke); border-radius:980px; padding:8px 13px; white-space:nowrap; }
-  .switch.primary{ background:var(--accent); color:#fff; border-color:var(--accent); box-shadow:0 4px 14px rgba(10,132,255,.3); }
+  .switch.primary{ background:var(--accent); color:#fff; border-color:var(--accent); box-shadow:0 4px 14px rgba(126,30,43,.3); }
   .switch.icon{ display:flex; align-items:center; justify-content:center; width:38px; height:38px; padding:0; color:var(--accent); }
   .usermenu{ position:relative; }
   .menu{ position:absolute; right:0; top:46px; z-index:20; min-width:190px;
@@ -39,7 +39,7 @@
     border:1px solid var(--stroke); border-radius:18px; box-shadow:0 12px 36px rgba(31,38,75,.18); padding:6px; }
   .menu .mi{ display:flex; align-items:center; gap:10px; padding:12px 14px; font-size:15px; font-weight:600; color:var(--ink);
     border-radius:12px; cursor:pointer; }
-  .menu .mi:hover{ background:rgba(10,132,255,.1); color:var(--accent); }
+  .menu .mi:hover{ background:rgba(126,30,43,.1); color:var(--accent); }
   .menu .mi svg{ width:18px; height:18px; opacity:.7; }
   .menu .sep{ height:1px; background:rgba(0,0,0,.06); margin:4px 8px; }
   .steps{ display:flex; gap:6px; padding:0 6px 16px; }
@@ -58,10 +58,10 @@
     transition:transform .12s, background .15s; box-shadow:0 2px 10px rgba(31,38,75,.05);
   }
   .tile:active{ transform:scale(.98); }
-  .tile.sel{ background:var(--accent); border-color:var(--accent); color:#fff; box-shadow:0 8px 22px rgba(10,132,255,.35); }
+  .tile.sel{ background:var(--accent); border-color:var(--accent); color:#fff; box-shadow:0 8px 22px rgba(126,30,43,.35); }
   .tile.sel .sb,.tile.sel .pr,.tile.sel .tags{ color:rgba(255,255,255,.85); }
   .ic{ width:42px; height:42px; border-radius:14px; flex:0 0 auto; display:flex; align-items:center; justify-content:center;
-    background:rgba(10,132,255,.12); color:var(--accent); font-weight:700; font-size:16px; }
+    background:rgba(126,30,43,.12); color:var(--accent); font-weight:700; font-size:16px; }
   .tile.sel .ic{ background:rgba(255,255,255,.25); color:#fff; }
   .nm{ font-size:17px; font-weight:600; letter-spacing:-.01em; }
   .sb{ font-size:13px; color:var(--mut); margin-top:2px; }
@@ -73,10 +73,10 @@
   .slot{ text-align:center; padding:15px 0; font-size:16px; font-weight:600; font-variant-numeric:tabular-nums; cursor:pointer;
     background:rgba(255,255,255,.55); border:1px solid rgba(255,255,255,.7); border-radius:16px; transition:.12s; }
   .slot:active{ transform:scale(.95); }
-  .slot.sel{ background:var(--accent); color:#fff; border-color:var(--accent); box-shadow:0 6px 16px rgba(10,132,255,.35); }
+  .slot.sel{ background:var(--accent); color:#fff; border-color:var(--accent); box-shadow:0 6px 16px rgba(126,30,43,.35); }
   .hint{ font-size:13px; color:var(--mut); margin-top:16px; line-height:1.5; }
   .btn{ width:100%; background:var(--accent); color:#fff; border:none; padding:17px; font-size:16px; font-weight:600;
-    border-radius:18px; cursor:pointer; margin-top:22px; box-shadow:0 8px 22px rgba(10,132,255,.35); transition:.12s; }
+    border-radius:18px; cursor:pointer; margin-top:22px; box-shadow:0 8px 22px rgba(126,30,43,.35); transition:.12s; }
   .btn:active{ transform:scale(.98); }
   .btn.out{ background:rgba(255,255,255,.5); color:var(--accent); border:1px solid var(--stroke); box-shadow:none; }
   .center{ text-align:center; }
@@ -101,7 +101,7 @@
   .field label .req{ color:var(--cancel); }
   .field input, .field select{ width:100%; font-size:15px; font-family:inherit; color:var(--ink);
     background:rgba(255,255,255,.65); border:1px solid rgba(255,255,255,.8); border-radius:14px; padding:13px 14px; outline:none; transition:.15s; }
-  .field input:focus, .field select:focus{ border-color:var(--accent); box-shadow:0 0 0 3px rgba(10,132,255,.18); background:#fff; }
+  .field input:focus, .field select:focus{ border-color:var(--accent); box-shadow:0 0 0 3px rgba(126,30,43,.18); background:#fff; }
   .field input.err{ border-color:var(--cancel); box-shadow:0 0 0 3px rgba(255,69,58,.15); }
   .grid2{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
   .grid3{ display:grid; grid-template-columns:1.3fr 1fr 1fr; gap:10px; }
@@ -116,16 +116,16 @@
   .segi.on{ color:var(--accent); background:rgba(255,255,255,.8); box-shadow:0 2px 6px rgba(31,38,75,.08); }
   .chip.ok{ background:rgba(52,199,89,.18); color:#1f8f3e; }
   .btn.small{ width:auto; margin:0; padding:9px 16px; font-size:13px; border-radius:12px; }
-  .rstar{ color:#ffb300; }
+  .rstar{ color:#C2912E; }
   .ratestars{ display:flex; gap:10px; justify-content:center; margin:20px 0 6px; }
   .rst{ cursor:pointer; color:#d6d8de; transition:transform .1s, color .15s; }
   .rst:active{ transform:scale(.9); }
-  .rst.on{ color:#ffb300; }
+  .rst.on{ color:#C2912E; }
   .rst svg{ width:42px; height:42px; }
   .ratelabel{ font-size:14px; font-weight:700; color:var(--ink-2); min-height:20px; margin-bottom:14px; }
   .rtarea{ width:100%; font-family:inherit; font-size:15px; color:var(--ink); resize:none; min-height:84px;
     background:rgba(255,255,255,.65); border:1px solid rgba(255,255,255,.8); border-radius:14px; padding:13px 14px; outline:none; }
-  .rtarea:focus{ border-color:var(--accent); box-shadow:0 0 0 3px rgba(10,132,255,.18); background:#fff; }
+  .rtarea:focus{ border-color:var(--accent); box-shadow:0 0 0 3px rgba(126,30,43,.18); background:#fff; }
   .tab.active{ color:var(--accent); background:rgba(255,255,255,.7); box-shadow:0 2px 8px rgba(31,38,75,.08); }
   .kpis{ display:grid; gap:10px; }
   .kpi{ display:flex; align-items:center; justify-content:space-between;
@@ -141,7 +141,7 @@
   .fidwrap{ display:flex; align-items:center; gap:10px; border-top:1px solid rgba(0,0,0,.05); padding-top:11px; }
   .fid{ display:flex; gap:3px; flex:1; }
   .fseg{ flex:1; height:7px; border-radius:3px; background:rgba(0,0,0,.09); transition:.2s; }
-  .fseg.on{ background:var(--accent); }
+  .fseg.on{ background:var(--gold); }
   .fseg.free{ background:var(--pago); }
   .fidlbl{ font-size:11px; font-weight:700; color:var(--mut); white-space:nowrap; font-variant-numeric:tabular-nums; }
   .fidlbl.free{ color:#1f8f3e; }
@@ -155,13 +155,13 @@
   .slval{ font-size:24px; font-weight:700; color:var(--accent); font-variant-numeric:tabular-nums; }
   .slval input{ font-size:22px; font-weight:700; color:var(--accent); font-family:inherit; border:1px solid rgba(255,255,255,.8);
     background:rgba(255,255,255,.7); border-radius:10px; padding:4px 8px; outline:none; }
-  .slval input:focus{ border-color:var(--accent); box-shadow:0 0 0 3px rgba(10,132,255,.15); }
+  .slval input:focus{ border-color:var(--accent); box-shadow:0 0 0 3px rgba(126,30,43,.15); }
   .iconbtn{ width:30px; height:30px; flex:0 0 auto; border:none; border-radius:50%; cursor:pointer; font-size:20px; line-height:1;
     background:rgba(255,69,58,.12); color:var(--cancel); display:flex; align-items:center; justify-content:center; }
   input[type=range]{ -webkit-appearance:none; appearance:none; width:100%; height:6px; border-radius:980px;
-    background:rgba(10,132,255,.2); outline:none; }
+    background:rgba(126,30,43,.2); outline:none; }
   input[type=range]::-webkit-slider-thumb{ -webkit-appearance:none; width:24px; height:24px; border-radius:50%;
-    background:var(--accent); cursor:pointer; box-shadow:0 3px 8px rgba(10,132,255,.4); border:3px solid #fff; }
+    background:var(--accent); cursor:pointer; box-shadow:0 3px 8px rgba(126,30,43,.4); border:3px solid #fff; }
   input[type=range]::-moz-range-thumb{ width:22px; height:22px; border-radius:50%; background:var(--accent);
     cursor:pointer; border:3px solid #fff; }
   .bar{ height:10px; background:rgba(255,255,255,.6); border-radius:980px; overflow:hidden; margin:14px 0 8px; }
@@ -608,7 +608,7 @@ function renderBarber(){
         let act="";
         if(dono && v.minha) act=`<span class="chip ok">Sua vaga · ${v.cand} candidato${v.cand===1?'':'s'}</span>`;
         else if(!dono) act = v.applied?`<span class="chip ok">Candidatura enviada</span>`:`<button class="btn out small" data-a="apply:${i}">Candidatar-se</button>`;
-        else act=`<span class="chip" style="background:rgba(10,132,255,.12);color:var(--accent)">${v.cand} candidatos</span>`;
+        else act=`<span class="chip" style="background:rgba(126,30,43,.12);color:var(--accent)">${v.cand} candidatos</span>`;
         h+=`<div class="box" style="margin-bottom:12px">
           <div style="display:flex;align-items:flex-start;gap:12px">
             <div class="av">${ini(v.barbearia)}</div>
