@@ -175,6 +175,8 @@
     background:rgba(255,159,10,.2); color:#a86400; margin-bottom:14px; }
   .badge.ok{ background:rgba(52,199,89,.18); color:#1f8f3e; }
   .tile.off{ opacity:.5; }
+  .herologo{ text-align:center; margin:2px 0 16px; }
+  .herologo img{ width:58%; max-width:180px; border-radius:16px; filter:drop-shadow(0 6px 16px rgba(0,0,0,.28)); }
 </style>
 </head>
 <body>
@@ -342,7 +344,7 @@ function renderClient(){
   let h="";
   if(!S.shop){
     const pin=`<svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20" style="vertical-align:-4px"><path d="M12 2C8.1 2 5 5.1 5 9c0 5 7 13 7 13s7-8 7-13c0-3.9-3.1-7-7-7Zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5Z"/></svg>`;
-    h+=`<div class="eyebrow">Barbearia</div><h1>Onde você quer cortar?</h1>`;
+    h+=`<div class="herologo"><img src="logo.png" alt="SeuBarba" onerror="this.parentNode.style.display='none'"></div><div class="eyebrow">Barbearia</div><h1>Onde você quer cortar?</h1>`;
     h+=`<button class="btn" data-a="geo" style="margin:0 0 8px;display:flex;align-items:center;justify-content:center;gap:8px">${pin} A mais próxima de você</button>`;
     h+=`<div class="hint" id="geoMsg" style="margin-top:0;text-align:center"></div>`;
     h+=`<div class="eyebrow" style="margin:18px 0 10px">Ou escolha</div>`;
