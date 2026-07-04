@@ -201,6 +201,7 @@
   </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 const barbers = [
   { id:"b1", nome:"João Silva", esp:["Fade","Barba","Social"], pct:.4 },
@@ -822,7 +823,37 @@ menu.addEventListener("click", e=>{
 });
 tabbar.addEventListener("click", e=>{ const t=e.target.closest(".tab"); if(!t)return; S.tab=t.dataset.tab; render(); });
 
+// ---------- Supabase (dados reais, com fallback pro modo demo) ----------
+const SB_URL="https://xprofyturjjhzjjjvgca.supabase.co";
+const SB_KEY="sb_publishable_y1y1j1gapNqt-7w5IMmyYg_M_Usm-7j";
+let sb=null; try{ sb = window.supabase.createClient(SB_URL, SB_KEY); }catch(e){}
+async function hydrate(){
+  if(!sb) return;
+  try{
+    const [rShops,rSvcs,rBarbers,rLinks] = await Promise.all([
+      sb.from('shops').select('*'),
+      sb.from('services').select('*'),
+      sb.from('barbers').select('*'),
+      sb.from('barber_shops').select('*'),
+    ]);
+    const links = rLinks.data || [];
+    if(rShops.data && rShops.data.length){
+      barbershops = rShops.data.map(s=>({ id:s.id, nome:s.nome, bairro:s.bairro||'', lat:s.lat, lng:s.lng,
+        barbers: links.filter(l=>l.shop_id===s.id).map(l=>l.barber_id), slots:true }));
+    }
+    if(rBarbers.data && rBarbers.data.length){
+      barbers = rBarbers.data.map(b=>({ id:b.id, nome:b.nome, esp:b.especialidades||[], pct:0.4 }));
+    }
+    if(rSvcs.data && rSvcs.data.length){
+      services = rSvcs.data.map(s=>({ id:s.id, nome:s.nome, preco:Number(s.preco), dur:s.duracao_min }));
+    }
+    render();
+    console.log('SeuBarba: dados carregados do Supabase');
+  }catch(e){ console.log('SeuBarba: modo demo (Supabase indisponível)', e); }
+}
+
 render();
+hydrate();
 </script>
 </body>
 </html>
