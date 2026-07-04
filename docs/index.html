@@ -413,9 +413,15 @@ function renderClient(){
     h+=`<div class="center"><div class="eyebrow">Passo 4 de 4 · PIX</div>
       <div class="amt">${fmt(S.service.preco)}</div>
       <div class="timer">expira em <span id="timer">05:00</span></div>
-      <div class="qrwrap"><div class="qr">${qr()}</div></div>
+      ${S.pixData && S.pixData.qrImage
+        ? `<div class="qrwrap"><img src="data:image/png;base64,${S.pixData.qrImage}" style="width:100%;height:100%;object-fit:contain" alt="QR PIX"></div>
       <div class="lbl">PIX copia e cola</div>
-      <div class="copy">00020126BR.GOV.BCB.PIX5204000053039865402${S.service.preco.toFixed(2)}5802BR6009SEUBARBA6304</div>
+      <div class="copy">${S.pixData.copiaECola}</div>`
+        : (S.pixTried
+          ? `<div class="qrwrap"><div class="qr">${qr()}</div></div>
+      <div class="lbl">PIX copia e cola (simulado)</div>
+      <div class="copy">00020126BR.GOV.BCB.PIX5204000053039865402${S.service.preco.toFixed(2)}5802BR6009SEUBARBA6304</div>`
+          : `<div class="hint" style="text-align:center;padding:44px 0">Gerando PIX...</div>`)}
       <div class="hint" style="text-align:center">${S.payer.nome} · ${b} · ${S.service.nome} · ${hhmm(S.time)}</div>
       <div id="paybox"><button class="btn" data-a="pay">Já paguei</button></div>
       </div>`;
@@ -740,7 +746,7 @@ main.addEventListener("click", e=>{
     let bad=null; [nome,cpf,zap].forEach(el=>{ if(!el.value.trim()){ el.classList.add("err"); if(!bad)bad=el; } else el.classList.remove("err"); });
     if(bad){ document.getElementById("payerr").innerHTML=`<div class="errmsg">Preencha nome, CPF e WhatsApp.</div>`; bad.focus(); return; }
     S.payer={ nome:nome.value.trim(), cpf:cpf.value.trim(), zap:zap.value.trim() };
-    S.pixGen=true; render(); return;
+    S.pixGen=true; S.pixData=null; S.pixTried=false; render(); createPixReal(); return;
   }
   else if(a==="fillpay"){
     S.payer={ nome:"Maycon Souza", cpf:"123.456.789-00", zap:"(11) 98888-7777" };
@@ -850,6 +856,21 @@ async function hydrate(){
     render();
     console.log('SeuBarba: dados carregados do Supabase');
   }catch(e){ console.log('SeuBarba: modo demo (Supabase indisponível)', e); }
+}
+
+const FN_PIX = "https://xprofyturjjhzjjjvgca.supabase.co/functions/v1/create-pix-charge";
+async function createPixReal(){
+  try{
+    const r = await fetch(FN_PIX, {
+      method:"POST",
+      headers:{ "Content-Type":"application/json", "apikey": SB_KEY, "Authorization":"Bearer "+SB_KEY },
+      body: JSON.stringify({ valor:S.service.preco, nome:S.payer.nome, cpf:S.payer.cpf, whatsapp:S.payer.zap, descricao:S.service.nome })
+    });
+    const d = await r.json();
+    if(d && d.qrImage){ S.pixData = { qrImage:d.qrImage, copiaECola:d.copiaECola, paymentId:d.paymentId }; }
+  }catch(e){ console.log("PIX: usando simulado (funcao indisponivel)", e); }
+  S.pixTried = true;
+  if(S.step===4 && S.pixGen) render();
 }
 
 render();
