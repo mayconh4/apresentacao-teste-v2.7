@@ -498,7 +498,6 @@ function renderOnboarding(){
 
   h += `<button class="btn" data-a="obNext">${step<3?'Continuar':'Criar conta'}</button>`;
   if(step>1) h += `<button class="btn out" data-a="obBack">Voltar</button>`;
-  else h += `<button class="btn out" data-a="skip">Pular por agora (demo)</button>`;
   main.innerHTML=h;
 }
 
