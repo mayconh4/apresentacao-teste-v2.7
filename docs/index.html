@@ -486,7 +486,7 @@ function renderOnboarding(){
       field("email","E-mail",{type:"email",ph:"voce@email.com",val:obVal("email")})+
       field("mobilePhone","Celular (WhatsApp)",{ph:"(11) 99999-9999",val:obVal("mobilePhone")})+
       `</div>`;
-    h += field("birthDate","Data de nascimento",{type:"date",val:obVal("birthDate")});
+    h += field("birthDate","Data de nascimento",{type:"text",ph:"dd/mm/aaaa",val:obVal("birthDate")});
   }
   if(step===3){
     h += `<div class="grid2">`+
