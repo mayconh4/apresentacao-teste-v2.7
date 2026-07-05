@@ -519,13 +519,42 @@ function obValidStep(){
   if(firstErr){ const fe=document.getElementById("formerr"); if(fe) fe.innerHTML=`<div class="errmsg">Preencha os campos destacados.</div>`; firstErr.focus(); return false; }
   return true;
 }
-function saveOnboarding(){
+async function saveOnboarding(){
   const d = S.obDraft || {};
   d.tipo = S.barberType||"dono";
+  let ok = false;
+  if(sb){
+    try{
+      const { error } = await sb.from("shops").insert({
+        nome: d.nomeFantasia, bairro: d.province || "", ativo: false,
+        cpf_cnpj: d.cpfCnpj, tipo_empresa: d.companyType, faturamento: Number(d.incomeValue)||null,
+        responsavel: d.respNome, email: d.email, telefone: d.mobilePhone, nascimento: d.birthDate||null,
+        cep: d.postalCode, logradouro: d.address, numero: d.addressNumber
+      });
+      ok = !error;
+      if(error) console.log("cadastro erro:", error);
+    }catch(e){ console.log("cadastro excecao:", e); }
+  }
   profile = d;
-  if(!barbers.find(b=>b.id==="me")) barbers.push({ id:"me", nome:d.respNome||d.nomeFantasia, esp:["Novo"], pct:.4 });
   S.obStep=1; S.obDraft=null;
-  S.role="barber"; S.tab="dash"; render();
+  S.cadastroOk = ok;
+  S.role = "cadastroEnviado";
+  render();
+}
+function renderCadastroEnviado(){
+  tabbar.style.display="none"; steps.style.display="none";
+  if(S.cadastroOk){
+    main.innerHTML = `<div class="center" style="padding-top:16px">
+      <div class="eyebrow">Cadastro</div><h1 class="bg">Cadastro enviado!</h1>
+      <div class="ok"><b>Em análise</b><p>Sua barbearia foi enviada para aprovação. Assim que for liberada, ela aparece para os clientes.</p></div>
+      <button class="btn" data-a="toClient" style="margin-top:16px">Voltar ao início</button></div>`;
+  } else {
+    main.innerHTML = `<div class="center" style="padding-top:16px">
+      <div class="eyebrow">Cadastro</div><h1 class="bg">Não deu para enviar</h1>
+      <div class="hint">Houve um problema ao salvar. Tente novamente em instantes.</div>
+      <button class="btn" data-a="toOnboard" style="margin-top:16px">Tentar de novo</button>
+      <button class="btn out" data-a="toClient">Voltar ao início</button></div>`;
+  }
 }
 
 /* ---------- Minha conta ---------- */
@@ -725,6 +754,7 @@ function render(){
   if(S.role==="client") renderClient();
   else if(S.role==="chooseType") renderChooseType();
   else if(S.role==="onboarding") renderOnboarding();
+  else if(S.role==="cadastroEnviado") renderCadastroEnviado();
   else if(S.role==="account") renderAccount();
   else renderBarber();
 }
@@ -834,7 +864,7 @@ async function hydrate(){
   if(!sb) return;
   try{
     const [rShops,rSvcs,rBarbers,rLinks] = await Promise.all([
-      sb.from('shops').select('*'),
+      sb.from('shops').select('*').eq('ativo', true),
       sb.from('services').select('*'),
       sb.from('barbers').select('*'),
       sb.from('barber_shops').select('*'),
