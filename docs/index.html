@@ -458,78 +458,74 @@ function field(id,label,{req=true,type="text",ph="",val="",opts=null}={}){
 }
 function renderOnboarding(){
   tabbar.style.display="none"; steps.style.display="none";
-  const p = profile||{};
+  if(!S.obDraft) S.obDraft = {};
+  if(!S.obStep) S.obStep = 1;
   const free = S.barberType==='freelancer';
-  let h=`<div class="eyebrow">${free?'Cadastro · Freelancer':'Cadastro · Dono de barbearia'}</div><h1>${free?'Cadastre seu perfil':'Cadastre sua barbearia'}</h1>
-    <div class="hint" style="margin-top:-10px;margin-bottom:6px">Os dados abaixo são os exigidos pelo Asaas para você receber pagamentos via PIX. <span style="color:var(--cancel)">*</span> obrigatório.</div>
-    <div id="formerr"></div>`;
+  const step = S.obStep;
+  const OB_TITLES = { 1:(free?"Seu perfil":"Sua barbearia"), 2:"Seus dados", 3:"Endereço" };
+  let h = `<div class="eyebrow">${free?'Cadastro · Freelancer':'Cadastro · Dono de barbearia'}</div>`;
+  h += `<h1 class="bg">${OB_TITLES[step]}</h1>`;
+  h += `<div class="steps" style="display:flex;margin:0 0 16px">`;
+  for(let i=1;i<=3;i++) h += `<i class="${i<=step?'on':''}"></i>`;
+  h += `</div><div class="hint" style="margin-top:-6px;margin-bottom:12px">Passo ${step} de 3 · <span style="color:var(--cancel)">*</span> obrigatório</div><div id="formerr"></div>`;
 
-  h+=`<div class="sechead"><span class="n">1</span> ${free?'Dados profissionais':'Dados da barbearia'}</div>`;
-  h+= field("nomeFantasia",free?"Nome do seu negócio":"Nome da barbearia",{ph:free?"Ex.: João Barber":"Ex.: SeuBarba Centro",val:p.nomeFantasia||""});
-  h+= field("razao","Razão social / nome",{ph:"Nome jurídico ou pessoal",val:p.razao||""});
-  h+=`<div class="grid2">`+
-      field("cpfCnpj","CPF ou CNPJ",{ph:"Somente números",val:p.cpfCnpj||""})+
-      field("companyType","Tipo",{val:p.companyType||"MEI",opts:[
+  if(step===1){
+    h += field("nomeFantasia", free?"Nome do seu negócio":"Nome da barbearia", {ph:free?"Ex.: João Barber":"Ex.: SeuBarba Centro", val:obVal("nomeFantasia")});
+    h += `<div class="grid2">`+
+      field("cpfCnpj","CPF ou CNPJ",{ph:"Somente números",val:obVal("cpfCnpj")})+
+      field("companyType","Tipo",{val:obVal("companyType")||"MEI",opts:[
         {v:"MEI",t:"MEI"},{v:"INDIVIDUAL",t:"Autônomo (PF)"},{v:"LIMITED",t:"LTDA"},{v:"ASSOCIATION",t:"Associação"}]})+
       `</div>`;
-  h+= field("incomeValue","Faturamento mensal estimado (R$)",{type:"number",ph:"Ex.: 8000",val:p.incomeValue||""});
+    h += field("incomeValue","Faturamento mensal estimado (R$)",{type:"number",ph:"Ex.: 8000",val:obVal("incomeValue")});
+  }
+  if(step===2){
+    h += field("respNome","Nome completo",{ph:"Nome e sobrenome",val:obVal("respNome")});
+    h += `<div class="grid2">`+
+      field("email","E-mail",{type:"email",ph:"voce@email.com",val:obVal("email")})+
+      field("mobilePhone","Celular (WhatsApp)",{ph:"(11) 99999-9999",val:obVal("mobilePhone")})+
+      `</div>`;
+    h += field("birthDate","Data de nascimento",{type:"date",val:obVal("birthDate")});
+  }
+  if(step===3){
+    h += `<div class="grid2">`+
+      field("postalCode","CEP",{ph:"00000-000",val:obVal("postalCode")})+
+      field("addressNumber","Número",{ph:"Nº",val:obVal("addressNumber")})+
+      `</div>`;
+    h += field("address","Endereço",{ph:"Rua / Avenida",val:obVal("address")});
+    h += field("province","Bairro",{ph:"Bairro",val:obVal("province")});
+    h += `<div class="formnote">Cidade e UF são preenchidas pelo CEP. Ao criar a conta, o Asaas envia um e-mail de ativação.</div>`;
+  }
 
-  h+=`<div class="sechead"><span class="n">2</span> Responsável</div>`;
-  h+= field("respNome","Nome completo do responsável",{ph:"Como no documento",val:p.respNome||""});
-  h+=`<div class="grid2">`+
-      field("respCpf","CPF do responsável",{ph:"Somente números",val:p.respCpf||""})+
-      field("birthDate","Data de nascimento",{type:"date",val:p.birthDate||""})+
-      `</div>`;
-  h+=`<div class="grid2">`+
-      field("email","E-mail de login",{type:"email",ph:"voce@email.com",val:p.email||""})+
-      field("mobilePhone","Celular (WhatsApp)",{ph:"(11) 99999-9999",val:p.mobilePhone||""})+
-      `</div>`;
-
-  h+=`<div class="sechead"><span class="n">3</span> Endereço</div>`;
-  h+=`<div class="grid2">`+
-      field("postalCode","CEP",{ph:"00000-000",val:p.postalCode||""})+
-      field("cidade","Cidade",{ph:"Cidade",val:p.cidade||""})+
-      `</div>`;
-  h+=`<div class="grid3">`+
-      field("address","Logradouro",{ph:"Rua / Av.",val:p.address||""})+
-      field("addressNumber","Número",{ph:"Nº",val:p.addressNumber||""})+
-      field("uf","UF",{ph:"SP",val:p.uf||""})+
-      `</div>`;
-  h+=`<div class="grid2">`+
-      field("province","Bairro",{ph:"Bairro",val:p.province||""})+
-      field("complement","Complemento",{req:false,ph:"Sala, andar...",val:p.complement||""})+
-      `</div>`;
-
-  h+=`<div class="sechead"><span class="n">4</span> Recebimento</div>`;
-  h+= field("pixKey","Chave PIX para receber os repasses",{ph:"CPF/CNPJ, e-mail, telefone ou aleatória",val:p.pixKey||""});
-  h+=`<div class="formnote">Ao criar a conta, o Asaas envia um e-mail de ativação e retorna a chave de API da subconta (usada para gerar as cobranças PIX dos seus clientes).</div>`;
-
-  h+=`<button class="btn" data-a="save">Criar conta e começar a receber</button>`;
-  h+=`<button class="btn out" data-a="skip">Pular por agora (demo)</button>`;
-  if(profile) h+=`<button class="btn out" data-a="toDash" style="margin-top:10px">Voltar ao painel</button>`;
+  h += `<button class="btn" data-a="obNext">${step<3?'Continuar':'Criar conta'}</button>`;
+  if(step>1) h += `<button class="btn out" data-a="obBack">Voltar</button>`;
+  else h += `<button class="btn out" data-a="skip">Pular por agora (demo)</button>`;
   main.innerHTML=h;
 }
-const FORM_FIELDS = ["nomeFantasia","razao","cpfCnpj","companyType","incomeValue","respNome","respCpf","birthDate","email","mobilePhone","postalCode","cidade","address","addressNumber","uf","province","pixKey"];
+
+const OB_STEPS = {
+  1: ["nomeFantasia","cpfCnpj","companyType","incomeValue"],
+  2: ["respNome","email","mobilePhone","birthDate"],
+  3: ["postalCode","addressNumber","address","province"],
+};
+function obVal(id){ return (S.obDraft && S.obDraft[id]!==undefined) ? S.obDraft[id] : ((profile && profile[id]) || ""); }
+function obReadStep(){ (OB_STEPS[S.obStep]||[]).forEach(id=>{ const el=document.getElementById(id); if(el) S.obDraft[id]=el.value.trim(); }); }
+function obValidStep(){
+  let firstErr=null;
+  (OB_STEPS[S.obStep]||[]).forEach(id=>{
+    const el=document.getElementById(id); if(!el) return;
+    if(el.dataset.req==="1" && !el.value.trim()){ el.classList.add("err"); if(!firstErr) firstErr=el; }
+    else el.classList.remove("err");
+  });
+  if(S.obStep===2){ const em=document.getElementById("email"); if(em && em.value && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em.value)){ em.classList.add("err"); if(!firstErr) firstErr=em; } }
+  if(firstErr){ const fe=document.getElementById("formerr"); if(fe) fe.innerHTML=`<div class="errmsg">Preencha os campos destacados.</div>`; firstErr.focus(); return false; }
+  return true;
+}
 function saveOnboarding(){
-  const data={}; let firstErr=null;
-  document.querySelectorAll("#formerr").forEach(e=>e.innerHTML="");
-  FORM_FIELDS.forEach(id=>{ const el=document.getElementById(id); data[id]=el?el.value.trim():""; });
-  data.complement=(document.getElementById("complement")||{}).value||"";
-  for(const id of FORM_FIELDS){
-    const el=document.getElementById(id);
-    if(el && el.dataset.req==="1" && !data[id]){ el.classList.add("err"); if(!firstErr) firstErr=el; }
-    else if(el) el.classList.remove("err");
-  }
-  // validação simples de e-mail
-  if(data.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(data.email)){ document.getElementById("email").classList.add("err"); if(!firstErr) firstErr=document.getElementById("email"); }
-  if(firstErr){
-    document.getElementById("formerr").innerHTML=`<div class="errmsg">Preencha os campos obrigatórios destacados em vermelho.</div>`;
-    firstErr.scrollIntoView({behavior:"smooth",block:"center"}); firstErr.focus(); return;
-  }
-  data.tipo=S.barberType||"dono";
-  profile=data;
-  // adiciona o novo barbeiro à lista de profissionais do cliente
-  if(!barbers.find(b=>b.id==="me")) barbers.push({ id:"me", nome:data.respNome||data.nomeFantasia, esp:["Novo"], pct:.4 });
+  const d = S.obDraft || {};
+  d.tipo = S.barberType||"dono";
+  profile = d;
+  if(!barbers.find(b=>b.id==="me")) barbers.push({ id:"me", nome:d.respNome||d.nomeFantasia, esp:["Novo"], pct:.4 });
+  S.obStep=1; S.obDraft=null;
   S.role="barber"; S.tab="dash"; render();
 }
 
@@ -768,6 +764,8 @@ main.addEventListener("click", e=>{
   }
   else if(a==="reset"){ S.step=1; S.barber=null; S.service=null; S.time=null; S.pixGen=false; S.payer=null; S.stars=0; S.rated=false; }
   else if(a==="save"){ saveOnboarding(); return; }
+  else if(a==="obNext"){ obReadStep(); if(!obValidStep()) return; if(S.obStep<3){ S.obStep++; render(); } else { saveOnboarding(); } return; }
+  else if(a==="obBack"){ obReadStep(); S.obStep--; render(); return; }
   else if(a==="skip"){
     profile={ nomeFantasia:"SeuBarba Centro", razao:"João Silva ME", cpfCnpj:"12345678000190", companyType:"MEI",
       incomeValue:"8000", respNome:"João Silva", respCpf:"12345678900", birthDate:"1990-05-10",
@@ -796,8 +794,8 @@ main.addEventListener("click", e=>{
     render(); return;
   }
   else if(a.startsWith("delfree:")){ team.splice(+a.split(":")[1],1); render(); return; }
-  else if(a.startsWith("type:")){ S.barberType=a.slice(5); S.role="onboarding"; }
-  else if(a==="toOnboard"){ S.role = S.barberType ? "onboarding" : "chooseType"; }
+  else if(a.startsWith("type:")){ S.barberType=a.slice(5); S.role="onboarding"; S.obStep=1; S.obDraft=null; }
+  else if(a==="toOnboard"){ S.role = S.barberType ? "onboarding" : "chooseType"; S.obStep=1; S.obDraft=null; }
   else if(a==="toDash"){ S.role="barber"; S.tab="dash"; }
   else if(a==="toClient"){ S.role="client"; S.step=1; }
   else if(a==="geo"){ acharMaisProxima(); return; }
