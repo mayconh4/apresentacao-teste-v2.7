@@ -364,9 +364,11 @@ function renderClient(){
     h+=`<div class="hint" style="text-align:center;cursor:pointer" data-a="trocashop">Trocar de barbearia</div>`;
   }
   if(S.step===2){
-    h+=`<div class="eyebrow">Passo 2 de 4</div><h1>O que vamos fazer?</h1>`;
-    const ic={s1:ICONS.scissors,s2:ICONS.combo,s3:ICONS.beard,s4:ICONS.spray,s5:ICONS.eyebrow};
-    services.forEach(s=> h+=`<div class="tile ${S.service&&S.service.id===s.id?'sel':''}" data-a="s:${s.id}"><div class="ic">${ic[s.id]||ICONS.scissors}</div><div><div class="nm">${s.nome}</div><div class="sb">${s.dur} minutos</div></div><div class="pr">${fmt(s.preco)}</div></div>`);
+    h+=`<div class="eyebrow">${S.shop?S.shop.nome+" · ":""}Passo 2 de 4</div><h1>O que vamos fazer?</h1>`;
+    const icc={cabelo:ICONS.scissors,barba:ICONS.beard,estetica:ICONS.spray,sobrancelha:ICONS.eyebrow};
+    const svcList = services.filter(function(x){ return !S.shop || !x.shop_id || x.shop_id===S.shop.id; });
+    if(!svcList.length) h+=`<div class="lr" style="justify-content:center;color:var(--mut)">Esta barbearia ainda não cadastrou serviços.</div>`;
+    svcList.forEach(s=> h+=`<div class="tile ${S.service&&S.service.id===s.id?'sel':''}" data-a="s:${s.id}"><div class="ic">${icc[s.cat]||ICONS.scissors}</div><div><div class="nm">${s.nome}</div><div class="sb">${s.dur} minutos</div></div><div class="pr">${fmt(s.preco)}</div></div>`);
   }
   if(S.step===3){
     const slots = slotsLivres(S.barber, S.service.dur);
@@ -462,12 +464,12 @@ function renderOnboarding(){
   if(!S.obStep) S.obStep = 1;
   const free = S.barberType==='freelancer';
   const step = S.obStep;
-  const OB_TITLES = { 1:(free?"Seu perfil":"Sua barbearia"), 2:"Seus dados", 3:"Endereço" };
+  const OB_TITLES = { 1:(free?"Seu perfil":"Sua barbearia"), 2:"Seus dados", 3:"Endereço", 4:"Serviços" };
   let h = `<div class="eyebrow">${free?'Cadastro · Freelancer':'Cadastro · Dono de barbearia'}</div>`;
   h += `<h1 class="bg">${OB_TITLES[step]}</h1>`;
   h += `<div class="steps" style="display:flex;margin:0 0 16px">`;
-  for(let i=1;i<=3;i++) h += `<i class="${i<=step?'on':''}"></i>`;
-  h += `</div><div class="hint" style="margin-top:-6px;margin-bottom:12px">Passo ${step} de 3 · <span style="color:var(--cancel)">*</span> obrigatório</div><div id="formerr"></div>`;
+  for(let i=1;i<=4;i++) h += `<i class="${i<=step?'on':''}"></i>`;
+  h += `</div><div class="hint" style="margin-top:-6px;margin-bottom:12px">Passo ${step} de 4 · <span style="color:var(--cancel)">*</span> obrigatório</div><div id="formerr"></div>`;
 
   if(step===1){
     h += field("nomeFantasia", free?"Nome do seu negócio":"Nome da barbearia", {ph:free?"Ex.: João Barber":"Ex.: SeuBarba Centro", val:obVal("nomeFantasia")});
@@ -496,19 +498,42 @@ function renderOnboarding(){
     h += `<div class="formnote">Cidade e UF são preenchidas pelo CEP. Ao criar a conta, o Asaas envia um e-mail de ativação.</div>`;
   }
 
-  h += `<button class="btn" data-a="obNext">${step<3?'Continuar':'Criar conta'}</button>`;
+  if(step===4){
+    if(!S.obDraft.svc) S.obDraft.svc = {};
+    h += `<div class="hint" style="margin-top:-6px;margin-bottom:10px">Selecione os serviços que você oferece (ajuste o preço se quiser).</div>`;
+    CATALOGO.forEach(function(c){
+      const sel = S.obDraft.svc[c.key];
+      h += `<div class="box" style="margin-bottom:10px;${sel?"border-color:var(--gold)":""}"><div style="display:flex;align-items:center;gap:10px"><div style="flex:1"><div class="nm" style="font-size:15px">${c.nome}</div><div class="sb">${c.dur} min</div></div><button class="btn ${sel?"":"out"} small" data-a="svcToggle:${c.key}">${sel?"✓ Selecionado":"Adicionar"}</button></div>${sel?`<div class="slrow" style="margin-top:10px"><span class="sllbl">Preço</span><span class="slval">R$ <input type="number" id="svcp_${c.key}" value="${sel.preco}" min="0" style="width:80px;text-align:right"></span></div>`:""}</div>`;
+    });
+  }
+  h += `<button class="btn" data-a="obNext">${step<4?'Continuar':'Criar conta'}</button>`;
   if(step>1) h += `<button class="btn out" data-a="obBack">Voltar</button>`;
   main.innerHTML=h;
 }
 
+const CATALOGO = [
+  { key:"corte", nome:"Corte Masculino", preco:45, dur:30, cat:"cabelo" },
+  { key:"cortebarba", nome:"Corte + Barba", preco:60, dur:45, cat:"cabelo" },
+  { key:"barba", nome:"Barba", preco:30, dur:30, cat:"barba" },
+  { key:"pigmentacao", nome:"Pigmentação", preco:50, dur:60, cat:"estetica" },
+  { key:"sobrancelha", nome:"Sobrancelha", preco:20, dur:15, cat:"sobrancelha" },
+  { key:"navalha", nome:"Acabamento na navalha", preco:25, dur:20, cat:"cabelo" },
+  { key:"platinado", nome:"Platinado / Descoloração", preco:120, dur:120, cat:"cabelo" },
+  { key:"infantil", nome:"Corte Infantil", preco:35, dur:30, cat:"cabelo" },
+];
 const OB_STEPS = {
   1: ["nomeFantasia","cpfCnpj","companyType","incomeValue"],
   2: ["respNome","email","mobilePhone","birthDate"],
   3: ["postalCode","addressNumber","address","province"],
+  4: [],
 };
 function obVal(id){ return (S.obDraft && S.obDraft[id]!==undefined) ? S.obDraft[id] : ((profile && profile[id]) || ""); }
-function obReadStep(){ (OB_STEPS[S.obStep]||[]).forEach(id=>{ const el=document.getElementById(id); if(el) S.obDraft[id]=el.value.trim(); }); }
+function obReadStep(){
+  if(S.obStep===4){ if(S.obDraft.svc){ Object.keys(S.obDraft.svc).forEach(function(k){ const el=document.getElementById("svcp_"+k); if(el) S.obDraft.svc[k].preco = Number(el.value)||S.obDraft.svc[k].preco; }); } return; }
+  (OB_STEPS[S.obStep]||[]).forEach(id=>{ const el=document.getElementById(id); if(el) S.obDraft[id]=el.value.trim(); });
+}
 function obValidStep(){
+  if(S.obStep===4){ if(!S.obDraft.svc || Object.keys(S.obDraft.svc).length===0){ const fe=document.getElementById("formerr"); if(fe) fe.innerHTML=`<div class="errmsg">Selecione ao menos um serviço.</div>`; return false; } return true; }
   let firstErr=null;
   (OB_STEPS[S.obStep]||[]).forEach(id=>{
     const el=document.getElementById(id); if(!el) return;
@@ -531,14 +556,18 @@ async function saveOnboarding(){
   }
   if(sb){
     try{
-      const { error } = await sb.from("shops").insert({
+      const { data: shopRow, error } = await sb.from("shops").insert({
         owner_id: uid, nome: d.nomeFantasia, bairro: d.province || "", ativo: false,
         cpf_cnpj: d.cpfCnpj, tipo_empresa: d.companyType, faturamento: Number(d.incomeValue)||null,
         responsavel: d.respNome, email: d.email, telefone: d.mobilePhone, nascimento: d.birthDate||null,
         cep: d.postalCode, logradouro: d.address, numero: d.addressNumber
-      });
-      ok = !error;
+      }).select("id").single();
+      ok = !error && !!shopRow;
       if(error) console.log("cadastro erro:", error);
+      if(ok && d.svc){
+        const rows = Object.keys(d.svc).map(function(k){ const sv=d.svc[k]; return { shop_id: shopRow.id, nome: sv.nome, preco: sv.preco, duracao_min: sv.dur, categoria: sv.cat }; });
+        if(rows.length){ const r2 = await sb.from("services").insert(rows); if(r2.error) console.log("servicos erro:", r2.error); }
+      }
     }catch(e){ console.log("cadastro excecao:", e); }
   }
   profile = d;
@@ -852,8 +881,9 @@ main.addEventListener("click", e=>{
   }
   else if(a==="reset"){ S.step=1; S.barber=null; S.service=null; S.time=null; S.pixGen=false; S.payer=null; S.stars=0; S.rated=false; }
   else if(a==="save"){ saveOnboarding(); return; }
-  else if(a==="obNext"){ obReadStep(); if(!obValidStep()) return; if(S.obStep<3){ S.obStep++; render(); } else { saveOnboarding(); } return; }
+  else if(a==="obNext"){ obReadStep(); if(!obValidStep()) return; if(S.obStep<4){ S.obStep++; render(); } else { saveOnboarding(); } return; }
   else if(a==="obBack"){ obReadStep(); S.obStep--; render(); return; }
+  else if(a.startsWith("svcToggle:")){ const key=a.split(":")[1]; if(!S.obDraft) S.obDraft={}; if(!S.obDraft.svc) S.obDraft.svc={}; Object.keys(S.obDraft.svc).forEach(function(k){ const el=document.getElementById("svcp_"+k); if(el) S.obDraft.svc[k].preco=Number(el.value)||S.obDraft.svc[k].preco; }); if(S.obDraft.svc[key]) delete S.obDraft.svc[key]; else { const c=CATALOGO.find(function(x){return x.key===key;}); if(c) S.obDraft.svc[key]={nome:c.nome,preco:c.preco,dur:c.dur,cat:c.cat}; } render(); return; }
   else if(a==="skip"){
     profile={ nomeFantasia:"SeuBarba Centro", razao:"João Silva ME", cpfCnpj:"12345678000190", companyType:"MEI",
       incomeValue:"8000", respNome:"João Silva", respCpf:"12345678900", birthDate:"1990-05-10",
@@ -948,7 +978,7 @@ async function hydrate(){
       barbers = rBarbers.data.map(b=>({ id:b.id, nome:b.nome, esp:b.especialidades||[], pct:0.4 }));
     }
     if(rSvcs.data && rSvcs.data.length){
-      services = rSvcs.data.map(s=>({ id:s.id, nome:s.nome, preco:Number(s.preco), dur:s.duracao_min }));
+      services = rSvcs.data.map(s=>({ id:s.id, nome:s.nome, preco:Number(s.preco), dur:s.duracao_min, shop_id:s.shop_id, cat:s.categoria }));
     }
     render();
     console.log('SeuBarba: dados carregados do Supabase');
