@@ -539,20 +539,45 @@ function field(id,label,{req=true,type="text",ph="",val="",opts=null}={}){
   }
   return `<div class="field"><label>${label}${star}</label><input id="${id}" type="${type}" placeholder="${ph}" value="${val}" ${req?'data-req="1"':''}></div>`;
 }
+// Sequência de etapas do cadastro (dinâmica conforme o modelo de atendimento)
+function obSteps(){
+  if(S.barberType==='freelancer') return ["barbearia","dados","endereco","servicos","horarios"];
+  const m = S.obDraft && S.obDraft.modelo;
+  const arr = ["barbearia","dados","endereco","modelo"];
+  if(m==="sozinho") arr.push("servicos");
+  else if(m==="equipe") arr.push("qtd","equipe");
+  else if(m==="freelancer") arr.push("freelancers");
+  arr.push("horarios");
+  return arr;
+}
+function formErr(msg){ const fe=document.getElementById("formerr"); if(fe) fe.innerHTML=`<div class="errmsg">${msg}</div>`; }
+// seletor de serviços (tipo + tempo) reutilizado para "atendo sozinho" e colaboradores
+function svcPicker(sel, togAction, durPrefix){
+  let h = `<div class="slots" style="grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:6px">`;
+  CATALOGO.forEach(function(c){ const on=sel&&sel[c.key]; h+=`<div class="slot ${on?'sel':''}" style="font-size:13px;padding:12px 6px" data-a="${togAction}:${c.key}">${c.nome}</div>`; });
+  h += `</div>`;
+  Object.keys(sel||{}).forEach(function(k){ const c=CATALOGO.find(function(x){return x.key===k;}); if(!c) return;
+    h+=`<div class="slrow" style="margin:4px 0"><span class="sllbl">${c.nome}</span><span class="slval">Tempo <input type="number" id="${durPrefix}${k}" value="${(sel[k].dur)||c.dur}" min="5" step="5" style="width:66px"> min</span></div>`;
+  });
+  return h;
+}
 function renderOnboarding(){
   tabbar.style.display="none"; steps.style.display="none";
   if(!S.obDraft) S.obDraft = {};
-  if(!S.obStep) S.obStep = 1;
   const free = S.barberType==='freelancer';
-  const step = S.obStep;
-  const OB_TITLES = { 1:(free?"Seu perfil":"Sua barbearia"), 2:"Seus dados", 3:"Endereço", 4:"Serviços", 5:"Horários" };
+  const seq = obSteps();
+  if(!S.obStep || seq.indexOf(S.obStep)<0) S.obStep = seq[0];
+  const key = S.obStep, idx = seq.indexOf(key), total = seq.length;
+  const OB_TITLE = { barbearia:(free?"Seu perfil":"Sua barbearia"), dados:"Seus dados", endereco:"Endereço",
+    modelo:"Como você atende?", servicos:(free?"Seus serviços":"Serviços que você faz"),
+    qtd:"Sua equipe", equipe:"Colaboradores", freelancers:"Freelancers disponíveis", horarios:"Horários" };
   let h = `<div class="eyebrow">${free?'Cadastro · Freelancer':'Cadastro · Dono de barbearia'}</div>`;
-  h += `<h1 class="bg">${OB_TITLES[step]}</h1>`;
+  h += `<h1 class="bg">${OB_TITLE[key]||""}</h1>`;
   h += `<div class="steps" style="display:flex;margin:0 0 16px">`;
-  for(let i=1;i<=5;i++) h += `<i class="${i<=step?'on':''}"></i>`;
-  h += `</div><div class="hint" style="margin-top:-6px;margin-bottom:12px">Passo ${step} de 5 · <span style="color:var(--cancel)">*</span> obrigatório</div><div id="formerr"></div>`;
+  for(let i=0;i<total;i++) h += `<i class="${i<=idx?'on':''}"></i>`;
+  h += `</div><div class="hint" style="margin-top:-6px;margin-bottom:12px">Passo ${idx+1} de ${total} · <span style="color:var(--cancel)">*</span> obrigatório</div><div id="formerr"></div>`;
 
-  if(step===1){
+  if(key==="barbearia"){
     h += field("nomeFantasia", free?"Nome do seu negócio":"Nome da barbearia", {ph:free?"Ex.: João Barber":"Ex.: SeuBarba Centro", val:obVal("nomeFantasia")});
     h += `<div class="grid2">`+
       field("cpfCnpj","CPF ou CNPJ",{ph:"Somente números",val:obVal("cpfCnpj")})+
@@ -561,7 +586,7 @@ function renderOnboarding(){
       `</div>`;
     h += field("incomeValue","Faturamento mensal estimado (R$)",{type:"number",ph:"Ex.: 8000",val:obVal("incomeValue")});
   }
-  if(step===2){
+  else if(key==="dados"){
     h += field("respNome","Nome completo",{ph:"Nome e sobrenome",val:obVal("respNome")});
     h += `<div class="grid2">`+
       field("email","E-mail",{type:"email",ph:"voce@email.com",val:obVal("email")})+
@@ -569,7 +594,7 @@ function renderOnboarding(){
       `</div>`;
     h += field("birthDate","Data de nascimento",{type:"text",ph:"dd/mm/aaaa",val:obVal("birthDate")});
   }
-  if(step===3){
+  else if(key==="endereco"){
     h += `<div class="grid2">`+
       field("postalCode","CEP",{ph:"00000-000",val:obVal("postalCode")})+
       field("addressNumber","Número",{ph:"Nº",val:obVal("addressNumber")})+
@@ -578,16 +603,48 @@ function renderOnboarding(){
     h += field("province","Bairro",{ph:"Bairro",val:obVal("province")});
     h += `<div class="formnote">Cidade e UF são preenchidas pelo CEP. Ao criar a conta, o Asaas envia um e-mail de ativação.</div>`;
   }
-
-  if(step===4){
+  else if(key==="modelo"){
+    const m = S.obDraft.modelo;
+    const opt = function(k,icon,t,s){ return `<div class="tile ${m===k?'sel':''}" data-a="modelo:${k}"><div class="ic">${icon}</div><div style="flex:1"><div class="nm">${t}</div><div class="tags">${s}</div></div><div class="ar">&rsaquo;</div></div>`; };
+    h += `<div class="hint" style="margin-top:-6px;margin-bottom:10px">Como funciona o atendimento na sua barbearia?</div>`;
+    h += opt("sozinho", ICONS.user, "Atendo sozinho", "Só você atende os clientes");
+    h += opt("equipe", ICONS.scissors, "Já tenho equipe", "Cadastre seus colaboradores");
+    h += opt("freelancer", ICONS.star, "Aceito freelancers", "Contrate profissionais disponíveis");
+  }
+  else if(key==="servicos"){
     if(!S.obDraft.svc) S.obDraft.svc = {};
-    h += `<div class="hint" style="margin-top:-6px;margin-bottom:10px">Selecione os serviços que você oferece (ajuste o preço se quiser).</div>`;
-    CATALOGO.forEach(function(c){
-      const sel = S.obDraft.svc[c.key];
-      h += `<div class="box" style="margin-bottom:10px;${sel?"border-color:var(--gold)":""}"><div style="display:flex;align-items:center;gap:10px"><div style="flex:1"><div class="nm" style="font-size:15px">${c.nome}</div><div class="sb">${c.dur} min</div></div><button class="btn ${sel?"":"out"} small" data-a="svcToggle:${c.key}">${sel?"✓ Selecionado":"Adicionar"}</button></div>${sel?`<div class="slrow" style="margin-top:10px"><span class="sllbl">Preço</span><span class="slval">R$ <input type="number" id="svcp_${c.key}" value="${sel.preco}" min="0" style="width:80px;text-align:right"></span></div>`:""}</div>`;
+    h += `<div class="hint" style="margin-top:-6px;margin-bottom:10px">Toque nos serviços que você faz e informe o tempo de cada um. O preço você ajusta depois em “Serviços e preços”.</div>`;
+    h += svcPicker(S.obDraft.svc, "osvc", "osvcdur_");
+  }
+  else if(key==="qtd"){
+    const n = S.obDraft.nColab || 1;
+    h += `<div class="hint" style="margin-top:-6px;margin-bottom:14px">Quantos colaboradores atendem na sua barbearia?</div>`;
+    h += `<div class="slrow" style="justify-content:center;gap:20px;align-items:center"><button class="btn out small" data-a="qtdDec" style="width:56px">−</button><span class="slval" style="min-width:44px;text-align:center">${n}</span><button class="btn out small" data-a="qtdInc" style="width:56px">+</button></div>`;
+  }
+  else if(key==="equipe"){
+    const n = S.obDraft.nColab || 1;
+    if(!S.obDraft.colabs) S.obDraft.colabs = [];
+    while(S.obDraft.colabs.length < n) S.obDraft.colabs.push({nome:"",tel:"",com:40,svc:{}});
+    S.obDraft.colabs = S.obDraft.colabs.slice(0, n);
+    h += `<div class="hint" style="margin-top:-6px;margin-bottom:10px">Dados de cada colaborador: nome, WhatsApp, comissão e o que faz.</div>`;
+    S.obDraft.colabs.forEach(function(co,i){
+      h += `<div class="box" style="margin-bottom:14px"><div class="sllbl" style="margin-bottom:8px;color:var(--gold)">Colaborador ${("0"+(i+1)).slice(-2)}</div>`;
+      h += `<div class="field"><label>Nome</label><input id="co_nome_${i}" value="${co.nome||""}" placeholder="Nome do colaborador"></div>`;
+      h += `<div class="grid2"><div class="field"><label>WhatsApp</label><input id="co_tel_${i}" value="${co.tel||""}" placeholder="(11) 99999-9999"></div><div class="field"><label>Comissão por serviço (%)</label><input type="number" id="co_com_${i}" value="${co.com!=null?co.com:40}" min="0" max="100"></div></div>`;
+      h += `<div class="sllbl" style="margin:6px 0 8px">Serviços que faz e tempo de cada um</div>`;
+      h += svcPicker(co.svc, "csvc:"+i, "co_dur_"+i+"_");
+      h += `</div>`;
     });
   }
-  if(step===5){
+  else if(key==="freelancers"){
+    if(!S.obDraft.freelas) S.obDraft.freelas = [];
+    h += `<div class="hint" style="margin-top:-6px;margin-bottom:10px">Freelancers disponíveis na sua região. Toque para contratar.</div>`;
+    profissionais.forEach(function(p,i){
+      const on = S.obDraft.freelas.indexOf(p.nome)>=0;
+      h += `<div class="box" style="margin-bottom:10px;${on?"border-color:var(--gold)":""}"><div style="display:flex;align-items:center;gap:10px"><div class="ic" style="width:40px;height:40px;border-radius:50%;background:rgba(0,0,0,.1);display:flex;align-items:center;justify-content:center;font-weight:700">${ini(p.nome)}</div><div style="flex:1"><div class="nm" style="font-size:15px">${p.nome}</div><div class="sb">${p.esp.join(" · ")} · ${ICONS.star} ${p.nota} · ${p.dist}</div></div><button class="btn ${on?"":"out"} small" data-a="freela:${i}">${on?"✓ Contratado":"Contratar"}</button></div></div>`;
+    });
+  }
+  else if(key==="horarios"){
     if(!S.obDraft.dias) S.obDraft.dias = ["seg","ter","qua","qui","sex","sab"];
     h += `<div class="hint" style="margin-top:-6px;margin-bottom:10px">Selecione os dias e o horário de atendimento.</div>`;
     h += `<div class="sllbl" style="margin-bottom:8px">Dias de atendimento</div><div class="slots" style="grid-template-columns:repeat(4,1fr);margin-bottom:14px">`;
@@ -596,8 +653,8 @@ function renderOnboarding(){
     h += `<div class="grid2">`+ field("abre","Abre",{opts:HORAS,val:obVal("abre")||"08:00"}) + field("fecha","Fecha",{opts:HORAS,val:obVal("fecha")||"19:00"}) +`</div>`;
     h += `<div class="grid2">`+ field("almocoIni","Almoço início",{req:false,opts:HORAS_OPC,val:obVal("almocoIni")||"12:00"}) + field("almocoFim","Almoço fim",{req:false,opts:HORAS_OPC,val:obVal("almocoFim")||"13:00"}) +`</div>`;
   }
-  h += `<button class="btn" data-a="obNext">${step<5?'Continuar':'Criar conta'}</button>`;
-  if(step>1) h += `<button class="btn out" data-a="obBack">Voltar</button>`;
+  h += `<button class="btn" data-a="obNext">${idx===total-1?(free?'Criar conta':'Finalizar cadastro'):'Continuar'}</button>`;
+  if(idx>0) h += `<button class="btn out" data-a="obBack">Voltar</button>`;
   h += demoBtn("admDemoOb");
   main.innerHTML=h;
 }
@@ -615,30 +672,57 @@ const CATALOGO = [
   { key:"platinado", nome:"Platinado / Descoloração", preco:120, dur:120, cat:"cabelo" },
   { key:"infantil", nome:"Corte Infantil", preco:35, dur:30, cat:"cabelo" },
 ];
-const OB_STEPS = {
-  1: ["nomeFantasia","cpfCnpj","companyType","incomeValue"],
-  2: ["respNome","email","mobilePhone","birthDate"],
-  3: ["postalCode","addressNumber","address","province"],
-  4: [],
-  5: ["abre","fecha","almocoIni","almocoFim"],
+const OB_FIELDS = {
+  barbearia: ["nomeFantasia","cpfCnpj","companyType","incomeValue"],
+  dados: ["respNome","email","mobilePhone","birthDate"],
+  endereco: ["postalCode","addressNumber","address","province"],
+  horarios: ["abre","fecha","almocoIni","almocoFim"],
 };
 function obVal(id){ return (S.obDraft && S.obDraft[id]!==undefined) ? S.obDraft[id] : ((profile && profile[id]) || ""); }
+function obReadColabs(){
+  (S.obDraft.colabs||[]).forEach(function(co,i){
+    const n=document.getElementById("co_nome_"+i); if(n) co.nome=n.value;
+    const t=document.getElementById("co_tel_"+i); if(t) co.tel=t.value;
+    const c=document.getElementById("co_com_"+i); if(c) co.com=Number(c.value)||0;
+    if(!co.svc) co.svc={};
+    Object.keys(co.svc).forEach(function(k){ const d=document.getElementById("co_dur_"+i+"_"+k); if(d) co.svc[k].dur=Number(d.value)||co.svc[k].dur; });
+  });
+}
 function obReadStep(){
-  if(S.obStep===4){ if(S.obDraft.svc){ Object.keys(S.obDraft.svc).forEach(function(k){ const el=document.getElementById("svcp_"+k); if(el) S.obDraft.svc[k].preco = Number(el.value)||S.obDraft.svc[k].preco; }); } return; }
-  (OB_STEPS[S.obStep]||[]).forEach(id=>{ const el=document.getElementById(id); if(el) S.obDraft[id]=el.value.trim(); });
+  const key = S.obStep;
+  if(key==="servicos"){ if(S.obDraft.svc){ Object.keys(S.obDraft.svc).forEach(function(k){ const d=document.getElementById("osvcdur_"+k); if(d) S.obDraft.svc[k].dur=Number(d.value)||S.obDraft.svc[k].dur; }); } return; }
+  if(key==="equipe"){ obReadColabs(); return; }
+  if(key==="qtd" || key==="modelo" || key==="freelancers") return;
+  (OB_FIELDS[key]||[]).forEach(function(id){ const el=document.getElementById(id); if(el) S.obDraft[id]=el.value.trim(); });
 }
 function obValidStep(){
-  if(S.obStep===4){ if(!S.obDraft.svc || Object.keys(S.obDraft.svc).length===0){ const fe=document.getElementById("formerr"); if(fe) fe.innerHTML=`<div class="errmsg">Selecione ao menos um serviço.</div>`; return false; } return true; }
-  if(S.obStep===5){ if(!S.obDraft.dias || !S.obDraft.dias.length){ const fe=document.getElementById("formerr"); if(fe) fe.innerHTML=`<div class="errmsg">Selecione ao menos um dia de atendimento.</div>`; return false; } return true; }
+  const key = S.obStep;
+  if(key==="modelo"){ if(!S.obDraft.modelo){ formErr("Escolha como você atende."); return false; } return true; }
+  if(key==="servicos"){ if(!S.obDraft.svc || !Object.keys(S.obDraft.svc).length){ formErr("Selecione ao menos um serviço."); return false; } return true; }
+  if(key==="qtd"){ if(!(S.obDraft.nColab>=1)){ formErr("Informe ao menos 1 colaborador."); return false; } return true; }
+  if(key==="equipe"){
+    const bad=(S.obDraft.colabs||[]).some(function(c){ return !c.nome || !c.nome.trim(); });
+    if(bad){ formErr("Preencha o nome de todos os colaboradores."); return false; } return true;
+  }
+  if(key==="freelancers"){ return true; }
+  if(key==="horarios"){ if(!S.obDraft.dias || !S.obDraft.dias.length){ formErr("Selecione ao menos um dia de atendimento."); return false; } return true; }
   let firstErr=null;
-  (OB_STEPS[S.obStep]||[]).forEach(id=>{
+  (OB_FIELDS[key]||[]).forEach(function(id){
     const el=document.getElementById(id); if(!el) return;
     if(el.dataset.req==="1" && !el.value.trim()){ el.classList.add("err"); if(!firstErr) firstErr=el; }
     else el.classList.remove("err");
   });
-  if(S.obStep===2){ const em=document.getElementById("email"); if(em && em.value && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em.value)){ em.classList.add("err"); if(!firstErr) firstErr=em; } }
-  if(firstErr){ const fe=document.getElementById("formerr"); if(fe) fe.innerHTML=`<div class="errmsg">Preencha os campos destacados.</div>`; firstErr.focus(); return false; }
+  if(key==="dados"){ const em=document.getElementById("email"); if(em && em.value && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em.value)){ em.classList.add("err"); if(!firstErr) firstErr=em; } }
+  if(firstErr){ formErr("Preencha os campos destacados."); firstErr.focus(); return false; }
   return true;
+}
+// navega pelo fluxo dinâmico de etapas
+function obGo(dir){
+  const seq = obSteps(); let i = seq.indexOf(S.obStep); if(i<0) i=0;
+  const ni = i + dir;
+  if(ni < 0) return;
+  if(ni >= seq.length){ saveOnboarding(); return; }
+  S.obStep = seq[ni]; render();
 }
 async function saveOnboarding(){
   const d = S.obDraft || {};
@@ -653,7 +737,7 @@ async function saveOnboarding(){
   if(sb){
     try{
       const { data: shopRow, error } = await sb.from("shops").insert({
-        owner_id: uid, nome: d.nomeFantasia, bairro: d.province || "", ativo: false,
+        owner_id: uid, nome: d.nomeFantasia, bairro: d.province || "", ativo: false, modelo: d.modelo || null,
         cpf_cnpj: d.cpfCnpj, tipo_empresa: d.companyType, faturamento: Number(d.incomeValue)||null,
         responsavel: d.respNome, email: d.email, telefone: d.mobilePhone, nascimento: d.birthDate||null,
         cep: d.postalCode, logradouro: d.address, numero: d.addressNumber,
@@ -663,14 +747,31 @@ async function saveOnboarding(){
       }).select("id").single();
       ok = !error && !!shopRow;
       if(error) console.log("cadastro erro:", error);
-      if(ok && d.svc){
-        const rows = Object.keys(d.svc).map(function(k){ const sv=d.svc[k]; return { shop_id: shopRow.id, nome: sv.nome, preco: sv.preco, duracao_min: sv.dur, categoria: sv.cat }; });
-        if(rows.length){ const r2 = await sb.from("services").insert(rows); if(r2.error) console.log("servicos erro:", r2.error); }
+      if(ok){
+        // serviços do estabelecimento (união de tipos + tempo; preço padrão do catálogo, ajustável depois)
+        const svcMap = {}; // key -> duracao
+        const addSvc = function(key, dur){ const c=CATALOGO.find(function(x){return x.key===key;}); if(!c) return; svcMap[key]=dur||svcMap[key]||c.dur; };
+        if(d.modelo==="sozinho" || S.barberType==="freelancer"){ Object.keys(d.svc||{}).forEach(function(k){ addSvc(k, d.svc[k].dur); }); }
+        if(d.modelo==="equipe"){ (d.colabs||[]).forEach(function(co){ Object.keys(co.svc||{}).forEach(function(k){ addSvc(k, co.svc[k].dur); }); }); }
+        if(d.modelo==="freelancer"){ (d.freelas||[]).forEach(function(nome){ const p=profissionais.find(function(x){return x.nome===nome;}); (p&&p.esp||[]).forEach(function(){}); }); }
+        const svcRows = Object.keys(svcMap).map(function(k){ const c=CATALOGO.find(function(x){return x.key===k;}); return { shop_id: shopRow.id, nome:c.nome, preco:c.preco, duracao_min:svcMap[k], categoria:c.cat }; });
+        if(svcRows.length){ const r2 = await sb.from("services").insert(svcRows); if(r2.error) console.log("servicos erro:", r2.error); }
+        // barbeiros do estabelecimento conforme o modelo
+        const nomesServ = function(svc){ return Object.keys(svc||{}).map(function(k){ const c=CATALOGO.find(function(x){return x.key===k;}); return c?c.nome:k; }); };
+        let barbRows = [];
+        if(d.modelo==="sozinho"){ barbRows = [{ nome:d.respNome||d.nomeFantasia, telefone:d.mobilePhone||"", especialidades:nomesServ(d.svc), comissao:100 }]; }
+        else if(d.modelo==="equipe"){ barbRows = (d.colabs||[]).filter(function(c){return c.nome&&c.nome.trim();}).map(function(c){ return { nome:c.nome.trim(), telefone:c.tel||"", especialidades:nomesServ(c.svc), comissao:Number(c.com)||0 }; }); }
+        else if(d.modelo==="freelancer"){ barbRows = (d.freelas||[]).map(function(nome){ const p=profissionais.find(function(x){return x.nome===nome;}); return { nome:nome, telefone:"", especialidades:(p&&p.esp)||[], comissao:0 }; }); }
+        if(barbRows.length){
+          const rb = await sb.from("barbers").insert(barbRows).select("id");
+          if(rb.error) console.log("barbeiros erro:", rb.error);
+          else if(rb.data){ const links = rb.data.map(function(b){ return { shop_id:shopRow.id, barber_id:b.id }; }); const rl = await sb.from("barber_shops").insert(links); if(rl.error) console.log("vinculo erro:", rl.error); }
+        }
       }
     }catch(e){ console.log("cadastro excecao:", e); }
   }
   profile = d;
-  S.obStep=1; S.obDraft=null;
+  S.obStep=null; S.obDraft=null;
   S.cadastroOk = ok;
   S.myShops = undefined;
   S.role = "cadastroEnviado";
@@ -944,8 +1045,18 @@ function admDemoOb(){
   if(!isAdmin()) return;
   obReadStep();
   S.obDraft = Object.assign({}, S.obDraft, DEMO_OB);
+  if(!S.obDraft.modelo) S.obDraft.modelo = "sozinho";
+  // serviços do "atendo sozinho"
   S.obDraft.svc = S.obDraft.svc || {};
-  ["corte","cortebarba","barba"].forEach(function(k){ const c=CATALOGO.find(function(x){ return x.key===k; }); if(c) S.obDraft.svc[k]={nome:c.nome,preco:c.preco,dur:c.dur,cat:c.cat}; });
+  ["corte","cortebarba","barba"].forEach(function(k){ const c=CATALOGO.find(function(x){ return x.key===k; }); if(c) S.obDraft.svc[k]={dur:c.dur}; });
+  // equipe demo
+  S.obDraft.nColab = S.obDraft.nColab || 2;
+  S.obDraft.colabs = [
+    { nome:"Carlos Silva", tel:"(11) 95555-1111", com:40, svc:{ corte:{dur:30}, barba:{dur:30} } },
+    { nome:"Pedro Santos", tel:"(11) 95555-2222", com:50, svc:{ cortebarba:{dur:45} } },
+  ];
+  // freelancers demo (contrata os dois primeiros disponíveis)
+  S.obDraft.freelas = profissionais.slice(0,2).map(function(p){ return p.nome; });
   S.obDraft.dias = DEMO_OB.dias.slice();
   render();
 }
@@ -1311,12 +1422,17 @@ main.addEventListener("click", e=>{
   }
   else if(a==="reset"){ S.step=1; S.barber=null; S.service=null; S.time=null; S.dia=null; S.pixGen=false; S.paid=false; S.payer=null; S.stars=0; S.rated=false; }
   else if(a==="save"){ saveOnboarding(); return; }
-  else if(a==="obNext"){ obReadStep(); if(!obValidStep()) return; if(S.obStep<5){ S.obStep++; render(); } else { saveOnboarding(); } return; }
-  else if(a==="obBack"){ obReadStep(); S.obStep--; render(); return; }
+  else if(a==="obNext"){ obReadStep(); if(!obValidStep()) return; obGo(1); return; }
+  else if(a==="obBack"){ obReadStep(); obGo(-1); return; }
   else if(a==="admDemoOb"){ admDemoOb(); return; }
   else if(a==="admDemoBarb"){ admDemoBarb(); return; }
   else if(a==="admDemoEdit"){ admDemoEdit(); return; }
-  else if(a.startsWith("svcToggle:")){ const key=a.split(":")[1]; if(!S.obDraft) S.obDraft={}; if(!S.obDraft.svc) S.obDraft.svc={}; Object.keys(S.obDraft.svc).forEach(function(k){ const el=document.getElementById("svcp_"+k); if(el) S.obDraft.svc[k].preco=Number(el.value)||S.obDraft.svc[k].preco; }); if(S.obDraft.svc[key]) delete S.obDraft.svc[key]; else { const c=CATALOGO.find(function(x){return x.key===key;}); if(c) S.obDraft.svc[key]={nome:c.nome,preco:c.preco,dur:c.dur,cat:c.cat}; } render(); return; }
+  else if(a.startsWith("modelo:")){ if(!S.obDraft) S.obDraft={}; S.obDraft.modelo=a.slice(7); render(); return; }
+  else if(a==="qtdInc"){ S.obDraft.nColab=Math.min(15,(S.obDraft.nColab||1)+1); render(); return; }
+  else if(a==="qtdDec"){ S.obDraft.nColab=Math.max(1,(S.obDraft.nColab||1)-1); render(); return; }
+  else if(a.startsWith("osvc:")){ const key=a.slice(5); if(!S.obDraft) S.obDraft={}; if(!S.obDraft.svc) S.obDraft.svc={}; obReadStep(); if(S.obDraft.svc[key]) delete S.obDraft.svc[key]; else { const c=CATALOGO.find(function(x){return x.key===key;}); if(c) S.obDraft.svc[key]={dur:c.dur}; } render(); return; }
+  else if(a.startsWith("csvc:")){ const p=a.split(":"); const i=+p[1], key=p[2]; obReadColabs(); const co=S.obDraft.colabs[i]; if(!co.svc) co.svc={}; if(co.svc[key]) delete co.svc[key]; else { const c=CATALOGO.find(function(x){return x.key===key;}); if(c) co.svc[key]={dur:c.dur}; } render(); return; }
+  else if(a.startsWith("freela:")){ const i=+a.slice(7); const nome=profissionais[i]&&profissionais[i].nome; if(nome){ if(!S.obDraft.freelas) S.obDraft.freelas=[]; const ix=S.obDraft.freelas.indexOf(nome); if(ix>=0) S.obDraft.freelas.splice(ix,1); else S.obDraft.freelas.push(nome); } render(); return; }
   else if(a.startsWith("diaToggle:")){ obReadStep(); const dk=a.split(":")[1]; if(!S.obDraft.dias) S.obDraft.dias=[]; const ix=S.obDraft.dias.indexOf(dk); if(ix>=0) S.obDraft.dias.splice(ix,1); else S.obDraft.dias.push(dk); render(); return; }
   else if(a==="skip"){
     profile={ nomeFantasia:"SeuBarba Centro", razao:"João Silva ME", cpfCnpj:"12345678000190", companyType:"MEI",
@@ -1346,8 +1462,8 @@ main.addEventListener("click", e=>{
     render(); return;
   }
   else if(a.startsWith("delfree:")){ team.splice(+a.split(":")[1],1); render(); return; }
-  else if(a.startsWith("type:")){ S.barberType=a.slice(5); S.role="onboarding"; S.obStep=1; S.obDraft=null; }
-  else if(a==="toOnboard"){ S.role = S.barberType ? "onboarding" : "chooseType"; S.obStep=1; S.obDraft=null; }
+  else if(a.startsWith("type:")){ S.barberType=a.slice(5); S.role="onboarding"; S.obStep=null; S.obDraft=null; }
+  else if(a==="toOnboard"){ S.role = S.barberType ? "onboarding" : "chooseType"; S.obStep=null; S.obDraft=null; }
   else if(a==="toDash"){ S.role="barber"; S.tab="dash"; }
   else if(a==="toClient"){ S.role="client"; S.step=1; S.shop=null; hydrate(); }
   else if(a==="accLogin"){ S.accStage="login"; render(); return; }
@@ -1357,7 +1473,7 @@ main.addEventListener("click", e=>{
   else if(a==="doSignup"){ doSignup(); return; }
   else if(a==="accLogout"){ accLogout(); return; }
   else if(a==="account"){ S.role="account"; S.accStage="home"; render(); return; }
-  else if(a==="toCreate"){ S.role="chooseType"; S.barberType=null; S.obStep=1; S.obDraft=null; render(); return; }
+  else if(a==="toCreate"){ S.role="chooseType"; S.barberType=null; S.obStep=null; S.obDraft=null; render(); return; }
   else if(a==="toAdmin"){ S.role="admin"; render(); admLoad(); return; }
   else if(a.startsWith("admToggle:")){ const p=a.split(":"); admToggle(p[1], p[2]==="1"); return; }
   else if(a.startsWith("admDel:")){ admDelShop(a.slice(7)); return; }
@@ -1418,7 +1534,7 @@ document.addEventListener("click", ()=> toggleMenu(false));
 menu.addEventListener("click", e=>{
   const t=e.target.closest("[data-m]"); if(!t) return;
   const m=t.dataset.m; toggleMenu(false);
-  if(m==="barber"){ if(!S.authEmail){ S.role="account"; S.accStage="signup"; } else { S.role="chooseType"; S.barberType=null; S.obStep=1; S.obDraft=null; } }
+  if(m==="barber"){ if(!S.authEmail){ S.role="account"; S.accStage="signup"; } else { S.role="chooseType"; S.barberType=null; S.obStep=null; S.obDraft=null; } }
   else if(m==="client"){ S.role="client"; S.step=1; S.barber=null; S.service=null; S.time=null; S.shop=null; hydrate(); }
   else if(m==="account"){ S.role="account"; S.accStage="home"; }
   render();
