@@ -542,16 +542,10 @@ function field(id,label,{req=true,type="text",ph="",val="",opts=null}={}){
   }
   return `<div class="field"><label>${label}${star}</label><input id="${id}" type="${type}" placeholder="${ph}" value="${val}" ${req?'data-req="1"':''}></div>`;
 }
-// Sequência de etapas do cadastro (dinâmica conforme o modelo de atendimento)
+// Cadastro por partes: primeiro só a barbearia. Equipe, serviços e modelo
+// de atendimento são configurados depois, no menu da barbearia (Minha conta).
 function obSteps(){
-  if(S.barberType==='freelancer') return ["barbearia","dados","endereco","servicos","horarios"];
-  const m = S.obDraft && S.obDraft.modelo;
-  const arr = ["barbearia","dados","endereco","modelo"];
-  if(m==="sozinho") arr.push("servicos");
-  else if(m==="equipe") arr.push("qtd","equipe");
-  else if(m==="freelancer") arr.push("freelancers");
-  arr.push("horarios");
-  return arr;
+  return ["barbearia","dados","endereco","horarios"];
 }
 function formErr(msg){ const fe=document.getElementById("formerr"); if(fe) fe.innerHTML=`<div class="errmsg">${msg}</div>`; }
 // seletor de serviços (tipo + tempo) reutilizado para "atendo sozinho" e colaboradores
@@ -739,8 +733,10 @@ async function saveOnboarding(){
   }
   if(sb){
     try{
+      // Cadastro por partes: aqui gravamos APENAS a barbearia. Equipe e serviços
+      // são configurados depois no menu da barbearia (Minha conta > Minhas barbearias).
       const { data: shopRow, error } = await sb.from("shops").insert({
-        owner_id: uid, nome: d.nomeFantasia, bairro: d.province || "", ativo: false, modelo: d.modelo || null,
+        owner_id: uid, nome: d.nomeFantasia, bairro: d.province || "", ativo: false,
         cpf_cnpj: d.cpfCnpj, tipo_empresa: d.companyType, faturamento: Number(d.incomeValue)||null,
         responsavel: d.respNome, email: d.email, telefone: d.mobilePhone, nascimento: d.birthDate||null,
         cep: d.postalCode, logradouro: d.address, numero: d.addressNumber,
@@ -749,29 +745,8 @@ async function saveOnboarding(){
         dias: d.dias||[]
       }).select("id").single();
       ok = !error && !!shopRow;
-      if(error) console.log("cadastro erro:", error);
-      if(ok){
-        // serviços do estabelecimento (união de tipos + tempo; preço padrão do catálogo, ajustável depois)
-        const svcMap = {}; // key -> duracao
-        const addSvc = function(key, dur){ const c=CATALOGO.find(function(x){return x.key===key;}); if(!c) return; svcMap[key]=dur||svcMap[key]||c.dur; };
-        if(d.modelo==="sozinho" || S.barberType==="freelancer"){ Object.keys(d.svc||{}).forEach(function(k){ addSvc(k, d.svc[k].dur); }); }
-        if(d.modelo==="equipe"){ (d.colabs||[]).forEach(function(co){ Object.keys(co.svc||{}).forEach(function(k){ addSvc(k, co.svc[k].dur); }); }); }
-        if(d.modelo==="freelancer"){ (d.freelas||[]).forEach(function(nome){ const p=profissionais.find(function(x){return x.nome===nome;}); (p&&p.esp||[]).forEach(function(){}); }); }
-        const svcRows = Object.keys(svcMap).map(function(k){ const c=CATALOGO.find(function(x){return x.key===k;}); return { shop_id: shopRow.id, nome:c.nome, preco:c.preco, duracao_min:svcMap[k], categoria:c.cat }; });
-        if(svcRows.length){ const r2 = await sb.from("services").insert(svcRows); if(r2.error) console.log("servicos erro:", r2.error); }
-        // barbeiros do estabelecimento conforme o modelo
-        const nomesServ = function(svc){ return Object.keys(svc||{}).map(function(k){ const c=CATALOGO.find(function(x){return x.key===k;}); return c?c.nome:k; }); };
-        let barbRows = [];
-        if(d.modelo==="sozinho"){ barbRows = [{ nome:d.respNome||d.nomeFantasia, telefone:d.mobilePhone||"", especialidades:nomesServ(d.svc), comissao:100 }]; }
-        else if(d.modelo==="equipe"){ barbRows = (d.colabs||[]).filter(function(c){return c.nome&&c.nome.trim();}).map(function(c){ return { nome:c.nome.trim(), telefone:c.tel||"", especialidades:nomesServ(c.svc), comissao:Number(c.com)||0 }; }); }
-        else if(d.modelo==="freelancer"){ barbRows = (d.freelas||[]).map(function(nome){ const p=profissionais.find(function(x){return x.nome===nome;}); return { nome:nome, telefone:"", especialidades:(p&&p.esp)||[], comissao:0 }; }); }
-        if(barbRows.length){
-          const rb = await sb.from("barbers").insert(barbRows).select("id");
-          if(rb.error) console.log("barbeiros erro:", rb.error);
-          else if(rb.data){ const links = rb.data.map(function(b){ return { shop_id:shopRow.id, barber_id:b.id }; }); const rl = await sb.from("barber_shops").insert(links); if(rl.error) console.log("vinculo erro:", rl.error); }
-        }
-      }
-    }catch(e){ console.log("cadastro excecao:", e); }
+      if(error){ console.log("cadastro erro:", error); S.cadastroErro = error.message || String(error); }
+    }catch(e){ console.log("cadastro excecao:", e); S.cadastroErro = (e&&e.message)||String(e); }
   }
   profile = d;
   S.obStep=null; S.obDraft=null;
@@ -784,13 +759,14 @@ function renderCadastroEnviado(){
   tabbar.style.display="none"; steps.style.display="none";
   if(S.cadastroOk){
     main.innerHTML = `<div class="center" style="padding-top:16px">
-      <div class="eyebrow">Cadastro</div><h1 class="bg">Cadastro enviado!</h1>
-      <div class="ok"><b>Em análise</b><p>Sua barbearia foi enviada para aprovação. Assim que for liberada, ela aparece para os clientes.</p></div>
-      <button class="btn" data-a="toClient" style="margin-top:16px">Voltar ao início</button></div>`;
+      <div class="eyebrow">Cadastro</div><h1 class="bg">Barbearia cadastrada!</h1>
+      <div class="ok"><b>Em análise</b><p>Sua barbearia foi enviada para aprovação. Agora configure a sua equipe, os serviços e os horários no menu da barbearia.</p></div>
+      <button class="btn" data-a="toMinhaConta" style="margin-top:16px">Configurar minha barbearia</button>
+      <button class="btn out" data-a="toClient">Voltar ao início</button></div>`;
   } else {
     main.innerHTML = `<div class="center" style="padding-top:16px">
       <div class="eyebrow">Cadastro</div><h1 class="bg">Não deu para enviar</h1>
-      <div class="hint">Houve um problema ao salvar. Tente novamente em instantes.</div>
+      <div class="hint">Houve um problema ao salvar.${S.cadastroErro?" ("+S.cadastroErro+")":""}</div>
       <button class="btn" data-a="toOnboard" style="margin-top:16px">Tentar de novo</button>
       <button class="btn out" data-a="toClient">Voltar ao início</button></div>`;
   }
@@ -1043,23 +1019,11 @@ const DEMO_OB = {
   postalCode:"01001-000", addressNumber:"100", address:"Praça da Sé", province:"Sé",
   abre:"08:00", fecha:"19:00", almocoIni:"12:00", almocoFim:"13:00", dias:["seg","ter","qua","qui","sex","sab"]
 };
-// preenche TODAS as etapas do cadastro de uma vez, para o admin avançar por qualquer uma
+// preenche os campos da barbearia (cadastro por partes) para o admin avançar rápido
 function admDemoOb(){
   if(!isAdmin()) return;
   obReadStep();
   S.obDraft = Object.assign({}, S.obDraft, DEMO_OB);
-  if(!S.obDraft.modelo) S.obDraft.modelo = "sozinho";
-  // serviços do "atendo sozinho"
-  S.obDraft.svc = S.obDraft.svc || {};
-  ["corte","cortebarba","barba"].forEach(function(k){ const c=CATALOGO.find(function(x){ return x.key===k; }); if(c) S.obDraft.svc[k]={dur:c.dur}; });
-  // equipe demo
-  S.obDraft.nColab = S.obDraft.nColab || 2;
-  S.obDraft.colabs = [
-    { nome:"Carlos Silva", tel:"(11) 95555-1111", com:40, svc:{ corte:{dur:30}, barba:{dur:30} } },
-    { nome:"Pedro Santos", tel:"(11) 95555-2222", com:50, svc:{ cortebarba:{dur:45} } },
-  ];
-  // freelancers demo (contrata os dois primeiros disponíveis)
-  S.obDraft.freelas = profissionais.slice(0,2).map(function(p){ return p.nome; });
   S.obDraft.dias = DEMO_OB.dias.slice();
   render();
 }
@@ -1504,6 +1468,7 @@ main.addEventListener("click", e=>{
   else if(a==="toOnboard"){ S.role = S.barberType ? "onboarding" : "chooseType"; S.obStep=null; S.obDraft=null; }
   else if(a==="toDash"){ S.role="barber"; S.tab="dash"; }
   else if(a==="toClient"){ S.role="client"; S.step=1; S.shop=null; hydrate(); }
+  else if(a==="toMinhaConta"){ S.role="account"; S.accStage="home"; S.myShops=undefined; render(); return; }
   else if(a==="accLogin"){ S.accStage="login"; render(); return; }
   else if(a==="accSignup"){ S.accStage="signup"; render(); return; }
   else if(a==="accHome"){ S.accStage="home"; render(); return; }
