@@ -82,6 +82,8 @@
     background:rgba(255,255,255,.55); border:1px solid rgba(255,255,255,.7); border-radius:16px; transition:.12s; }
   .slot:active{ transform:scale(.95); }
   .slot.sel{ background:var(--accent); color:#fff; border-color:var(--gold); box-shadow:0 6px 16px rgba(0,0,0,.30); }
+  .slot.off{ opacity:.4; color:var(--mut); text-decoration:line-through; cursor:not-allowed; box-shadow:none; }
+  .slot.off:active{ transform:none; }
   .hint{ font-size:13px; color:var(--mut); margin-top:16px; line-height:1.5; }
   .btn{ width:100%; background:linear-gradient(135deg,#E7C767,#C2912E 55%,#A6791E); color:#2e1c06; border:1px solid #8a6a1e; padding:17px; font-size:16px; font-weight:600;
     border-radius:18px; cursor:pointer; margin-top:22px; box-shadow:0 8px 20px rgba(0,0,0,.20), inset 0 1px 0 rgba(255,255,255,.45); transition:.12s; }
@@ -319,17 +321,19 @@ const ICONS = {
   gift: SV('<path d="M11 8H4.6c-.6 0-1.1.5-1.1 1.1v2.3c0 .4.3.7.7.7H11V8Zm2 0v4.1h6.8c.4 0 .7-.3.7-.7V9.1c0-.6-.5-1.1-1.1-1.1H13Zm-2 6H5v6.1c0 .5.4.9.9.9H11v-7Zm2 0v7h5.1c.5 0 .9-.4.9-.9V14h-6ZM8.2 3.3C9.7 2.8 11 4.4 11.6 6.3H9.9c-1.1 0-2.1-.5-2.4-1.4-.2-.7.1-1.4.7-1.6Zm7.6 0c.6.2.9.9.7 1.6-.3.9-1.3 1.4-2.4 1.4h-1.7C13 4.4 14.3 2.8 15.8 3.3Z"/>'),
 };
 
-function slotsLivres(barbeiroId, dur, passo, hor, minMin){
+// Retorna TODOS os horários do dia com o status de cada um.
+// { m: minutos, ok: disponível?, motivo: 'passou' | 'almoco' | 'ocupado' | '' }
+function slotsStatus(barbeiroId, dur, passo, hor, minMin){
   passo = passo||30; hor = hor||horario; minMin = minMin||0;
   const ocup = appointments.filter(a => (barbeiroId==="any"||a.barbeiro===barbeiroId) && a.status!=="cancelado")
     .map(a => ({ ini:a.min, fim:a.min + (services.find(s=>s.id===a.service)?.dur||30) }));
   const out=[];
   for(let m=hor.abre*60; m+dur<=hor.fecha*60; m+=passo){
-    if(m < minMin) continue;                 // horário já passou hoje — indisponível
-    const fim=m+dur; let conf=false;
-    if(hor.almocoIni!=null && hor.almocoFim!=null && m < hor.almocoFim*60 && hor.almocoIni*60 < fim) conf=true;
-    for(const o of ocup){ if(m<o.fim && o.ini<fim){ conf=true; break; } }
-    if(!conf) out.push(m);
+    const fim=m+dur; let ok=true, motivo="";
+    if(m < minMin){ ok=false; motivo="passou"; }
+    if(ok && hor.almocoIni!=null && hor.almocoFim!=null && m < hor.almocoFim*60 && hor.almocoIni*60 < fim){ ok=false; motivo="almoco"; }
+    if(ok){ for(const o of ocup){ if(m<o.fim && o.ini<fim){ ok=false; motivo="ocupado"; break; } } }
+    out.push({ m:m, ok:ok, motivo:motivo });
   }
   return out;
 }
@@ -436,11 +440,18 @@ function renderClient(){
       const shor = (S.shop && S.shop.abre!=null) ? {abre:S.shop.abre, fecha:S.shop.fecha, almocoIni:S.shop.almocoIni, almocoFim:S.shop.almocoFim} : horario;
       let minMin = 0;
       if(S.dia===isoDia(new Date())){ const agora=new Date(); minMin = agora.getHours()*60 + agora.getMinutes(); }
-      const slots = slotsLivres(S.barber, S.service.dur, 30, shor, minMin);
+      const slots = slotsStatus(S.barber, S.service.dur, 30, shor, minMin);
+      const temLivre = slots.some(function(s){ return s.ok; });
+      const motivoTxt = { passou:"Horário já passou", almoco:"Intervalo de almoço", ocupado:"Horário ocupado" };
       h+=`<div class="sllbl" style="margin:16px 0 8px">Escolha o horário</div><div class="slots">`;
-      if(!slots.length) h+=`<div class="lr" style="grid-column:1/-1;justify-content:center;color:var(--mut)">Sem horários livres neste dia.</div>`;
-      slots.forEach(m=> h+=`<div class="slot ${S.time===m?'sel':''}" data-a="t:${m}">${hhmm(m)}</div>`);
-      h+=`</div><div class="hint">${labelDia(S.dia).top} · ${S.service.nome} (${S.service.dur} min). Almoço e horários ocupados já removidos.</div>`;
+      if(!slots.length) h+=`<div class="lr" style="grid-column:1/-1;justify-content:center;color:var(--mut)">Esta barbearia ainda não tem horário de atendimento configurado.</div>`;
+      slots.forEach(function(s){
+        if(s.ok) h+=`<div class="slot ${S.time===s.m?'sel':''}" data-a="t:${s.m}">${hhmm(s.m)}</div>`;
+        else h+=`<div class="slot off" title="${motivoTxt[s.motivo]||'Indisponível'}">${hhmm(s.m)}</div>`;
+      });
+      h+=`</div>`;
+      if(slots.length && !temLivre) h+=`<div class="lr" style="justify-content:center;color:var(--mut);text-align:center;margin-top:10px">Nenhum horário livre neste dia. Escolha outro dia.</div>`;
+      h+=`<div class="hint">${labelDia(S.dia).top} · ${S.service.nome} (${S.service.dur} min). Horários riscados estão indisponíveis.</div>`;
       if(S.time!==null) h+=`<button class="btn" data-a="next">Confirmar e pagar</button>`;
     }
   }
@@ -730,19 +741,21 @@ async function doLogin(){
   const {email,pass,e,p}=accCreds();
   if(!email){ if(e)e.classList.add("err"); return; } if(!pass){ if(p)p.classList.add("err"); return; }
   S.loginEmail=email;
-  try{ const { error } = await sb.auth.signInWithPassword({ email, password:pass }); if(error){ accErr("E-mail ou senha inválidos."); } }
-  catch(err){ accErr("Erro ao entrar. Tente de novo."); }
+  S.loginPending=true;   // login explícito: pode redirecionar para "Minha conta"
+  try{ const { error } = await sb.auth.signInWithPassword({ email, password:pass }); if(error){ S.loginPending=false; accErr("E-mail ou senha inválidos."); } }
+  catch(err){ S.loginPending=false; accErr("Erro ao entrar. Tente de novo."); }
 }
 async function doSignup(){
   const {email,pass,e,p}=accCreds();
   if(!email){ if(e)e.classList.add("err"); return; }
   if(!pass || pass.length<6){ if(p)p.classList.add("err"); accErr("A senha precisa ter ao menos 6 caracteres."); return; }
   S.loginEmail=email;
+  S.loginPending=true;   // cadastro explícito: pode redirecionar para "Minha conta"
   try{
     const { data, error } = await sb.auth.signUp({ email, password:pass });
-    if(error){ accErr(error.message); return; }
-    if(!data.session){ S.accStage="login"; render(); accErr("Conta criada! Confirme pelo e-mail (se pedido) e entre."); return; }
-  }catch(err){ accErr("Erro ao criar conta."); }
+    if(error){ S.loginPending=false; accErr(error.message); return; }
+    if(!data.session){ S.loginPending=false; S.accStage="login"; render(); accErr("Conta criada! Confirme pelo e-mail (se pedido) e entre."); return; }
+  }catch(err){ S.loginPending=false; accErr("Erro ao criar conta."); }
 }
 async function accLogout(){ try{ await sb.auth.signOut(); }catch(e){} S.authEmail=""; S.accStage="home"; render(); }
 
@@ -1403,7 +1416,7 @@ tabbar.addEventListener("click", e=>{ const t=e.target.closest(".tab"); if(!t)re
 const SB_URL="https://xprofyturjjhzjjjvgca.supabase.co";
 const SB_KEY="sb_publishable_y1y1j1gapNqt-7w5IMmyYg_M_Usm-7j";
 let sb=null; try{ sb = window.supabase.createClient(SB_URL, SB_KEY); }catch(e){}
-if(sb){ try{ refreshAuth(); sb.auth.onAuthStateChange(function(ev, session){ S.authEmail=(session&&session.user&&session.user.email)||""; S.myShops=undefined; if(ev==="SIGNED_IN"){ S.role="account"; S.accStage="home"; render(); } }); }catch(e){} }
+if(sb){ try{ refreshAuth(); sb.auth.onAuthStateChange(function(ev, session){ S.authEmail=(session&&session.user&&session.user.email)||""; S.myShops=undefined; if(ev==="SIGNED_IN" && S.loginPending){ S.loginPending=false; S.role="account"; S.accStage="home"; render(); } }); }catch(e){} }
 async function hydrate(){
   if(!sb){ S.shopLoad="erro: sem conexao"; render(); return; }
   S.shopLoad="loading"; render();
