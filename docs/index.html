@@ -206,11 +206,12 @@
   <div class="steps" id="steps"><i></i><i></i><i></i><i></i></div>
   <div class="panel"><main id="main"></main></div>
   <div class="tabbar" id="tabbar" style="display:none">
-    <div class="tab" data-tab="agenda">Agenda</div>
     <div class="tab" data-tab="dash">Resumo</div>
-    <div class="tab" data-tab="rede">Rede</div>
+    <div class="tab" data-tab="agenda">Agenda</div>
     <div class="tab" data-tab="equipe" id="tabEquipe">Equipe</div>
     <div class="tab" data-tab="metas">Metas</div>
+    <div class="tab" data-tab="rede">Rede</div>
+    <div class="tab" data-tab="conta">Conta</div>
   </div>
 </div>
 
@@ -724,7 +725,7 @@ function obGo(dir){
 async function saveOnboarding(){
   const d = S.obDraft || {};
   d.tipo = S.barberType||"dono";
-  let ok = false, uid = null;
+  let ok = false, uid = null, newShopId = null;
   try{ const { data } = await sb.auth.getSession(); uid = data && data.session && data.session.user ? data.session.user.id : null; }catch(e){}
   if(!uid){
     S.role="account"; S.accStage="signup"; render();
@@ -746,12 +747,15 @@ async function saveOnboarding(){
       }).select("id").single();
       ok = !error && !!shopRow;
       if(error){ console.log("cadastro erro:", error); S.cadastroErro = error.message || String(error); }
+      else if(shopRow) newShopId = shopRow.id;
     }catch(e){ console.log("cadastro excecao:", e); S.cadastroErro = (e&&e.message)||String(e); }
   }
   profile = d;
   S.obStep=null; S.obDraft=null;
   S.cadastroOk = ok;
   S.myShops = undefined;
+  // Cadastrou como barbeiro -> cai direto no painel administrativo da barbearia
+  if(ok && newShopId){ S.cadastroAviso = true; openDash(newShopId); return; }
   S.role = "cadastroEnviado";
   render();
 }
@@ -852,6 +856,7 @@ function renderBarber(){
   document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("active", t.dataset.tab===S.tab));
   const list = appointments.filter(a=>a.barbeiro==="b1");
   let h="";
+  if(S.cadastroAviso){ h+=`<div class="ok" style="margin-bottom:14px"><b>Barbearia cadastrada!</b><p>Em análise para aprovação. Configure sua equipe, serviços e horários aqui no painel (aba Conta).</p></div>`; S.cadastroAviso=false; }
   if(S.tab==="equipe"){
     h+=`<div class="eyebrow">${profile?profile.nomeFantasia:'Barbearia'}</div><h1 class="bg">Equipe</h1>
       <div class="hint" style="margin-top:-8px;margin-bottom:14px">Cadastre seus freelancers e defina a comissão de cada um.</div>`;
@@ -1005,6 +1010,23 @@ function renderBarber(){
         <a class="wabtn" href="${url}" target="_blank" rel="noopener"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-8.6 15l-1.3 4.7 4.8-1.3A10 10 0 1 0 12 2zm5.9 14.3c-.2.7-1.4 1.3-2 1.4-.5.1-1.2.1-1.9-.1-.4-.1-1-.3-1.7-.6-3-1.3-4.9-4.3-5-4.5-.2-.2-1.2-1.6-1.2-3s.7-2.1 1-2.4c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.5l.8 2c.1.1.1.3 0 .5l-.4.5-.3.3c-.2.2-.3.4-.2.6.2.4.8 1.3 1.6 2 .9.9 1.7 1.1 2 1.3.2.1.4.1.6-.1l.7-.9c.2-.2.4-.2.6-.1l1.9.9c.3.1.4.2.5.3.1.2.1.7-.1 1.3z"/></svg>Lembrar</a></div>`;
     });
   }
+  if(S.tab==="conta"){
+    const em = S.authEmail || "";
+    h+=`<div class="eyebrow">Minha conta</div><h1 class="bg">Sua barbearia</h1>`;
+    if(em) h+=`<div class="lr"><span class="c">Logado como</span><b>${em}</b></div>`;
+    h+=`<div class="sllbl" style="margin:18px 0 8px">Minhas barbearias</div>`;
+    if(S.myShops===undefined || S.myShops===null){ h+=`<div class="lr" style="justify-content:center;color:var(--mut)">Carregando…</div>`; loadMyShops(); }
+    else if(!S.myShops.length){ h+=`<div class="lr" style="justify-content:center;color:var(--mut)">Você ainda não tem barbearia cadastrada.</div>`; }
+    else S.myShops.forEach(function(sp){
+      const atual = S.dashShop && S.dashShop.id===sp.id;
+      const st = sp.ativo ? `<span class="chip ok">Ativa</span>` : `<span class="chip" style="background:rgba(255,159,10,.2);color:#a86400">Inativa</span>`;
+      h+=`<div class="box" style="margin-bottom:10px;${atual?'border-color:var(--gold)':''}"><div style="display:flex;align-items:center;gap:10px"><div style="flex:1"><div class="nm" style="font-size:15px">${sp.nome||"(sem nome)"}</div><div class="sb">${sp.bairro||""}${atual?" · em exibição":""}</div></div>${st}</div>
+        <div class="fidwrap" style="justify-content:flex-end;gap:8px;flex-wrap:wrap">${atual?"":`<button class="btn small" data-a="dash:${sp.id}">Abrir painel</button>`}<button class="btn out small" data-a="shopEdit:${sp.id}:dash">Editar</button><button class="btn out small" data-a="admBarb:${sp.id}:dash">Equipe</button><button class="btn out small" data-a="svcOpen:${sp.id}:dash">Serviços</button></div></div>`;
+    });
+    h+=`<button class="btn out" data-a="toCreate" style="margin-top:14px">Cadastrar nova barbearia</button>`;
+    if(isAdmin()) h+=`<button class="btn out" data-a="toAdmin" style="margin-top:10px">Painel do administrador</button>`;
+    h+=`<button class="btn out" data-a="accLogout" style="margin-top:10px">Sair</button>`;
+  }
   main.innerHTML=h;
 }
 
@@ -1135,8 +1157,9 @@ async function svcSave(id){
 function svcExit(){
   const back = S.svcBack || "admin";
   S.svcShop=null; S.svcList=null; S.svcBack=null;
-  S.role = (back==="account") ? "account" : "admin";
-  if(back==="account") S.accStage="home";
+  if(back==="dash"){ S.role="barber"; S.tab="conta"; }
+  else if(back==="account"){ S.role="account"; S.accStage="home"; }
+  else { S.role="admin"; }
   render();
 }
 
@@ -1145,10 +1168,10 @@ async function loadMyShops(){
   if(S.myShopsLoading) return; S.myShopsLoading=true;
   let uid=null;
   try{ const { data } = await sb.auth.getSession(); uid = data&&data.session&&data.session.user ? data.session.user.id : null; }catch(e){}
-  if(!uid){ S.myShops=[]; S.myShopsLoading=false; if(S.role==="account") render(); return; }
+  if(!uid){ S.myShops=[]; S.myShopsLoading=false; if(S.role==="account"||S.role==="barber") render(); return; }
   try{ const { data } = await sb.from("shops").select("*").eq("owner_id", uid).order("criado_em",{ascending:false}); S.myShops=data||[]; }catch(e){ S.myShops=[]; }
   S.myShopsLoading=false;
-  if(S.role==="account") render();
+  if(S.role==="account"||S.role==="barber") render();
 }
 // abre o painel/dashboard da barbearia (agenda, ganhos, metas, comissões, equipe)
 async function openDash(shopId){
@@ -1249,8 +1272,9 @@ async function admBarbOpen(shopId, back){
 function barbExit(){
   const back = S.barbBack || "admin";
   S.barbShop=null; S.barbLinks=null; S.espEdit=null; S.barbBack=null; S.nbEspSel=null; S.nbNome=""; S.nbTel=""; S.nbEspDraft="";
-  S.role = (back==="account") ? "account" : "admin";
-  if(back==="account") S.accStage="home";
+  if(back==="dash"){ S.role="barber"; S.tab="conta"; }
+  else if(back==="account"){ S.role="account"; S.accStage="home"; }
+  else { S.role="admin"; }
   render();
 }
 async function admBarbAdd(barberId){
@@ -1341,7 +1365,8 @@ async function openShopEdit(id, ctx){
 }
 function editExit(){
   S.editShop=null;
-  if(S.editBack==="account"){ S.role="account"; S.accStage="home"; }
+  if(S.editBack==="dash"){ S.role="barber"; S.tab="conta"; }
+  else if(S.editBack==="account"){ S.role="account"; S.accStage="home"; }
   render();
 }
 async function shopSetAtivo(id, ativo){
@@ -1349,7 +1374,8 @@ async function shopSetAtivo(id, ativo){
   try{ const r = await sb.from("shops").update({ ativo: !!ativo }).eq("id", id); err=r.error; }catch(e){ err=e; }
   if(err){ opFail("Não foi possível atualizar a situação da barbearia.", err); return; }
   S.editShop=null;
-  if(S.editBack==="account"){ S.myShops=undefined; S.role="account"; S.accStage="home"; render(); }
+  if(S.editBack==="dash"){ S.myShops=undefined; S.role="barber"; S.tab="conta"; render(); }
+  else if(S.editBack==="account"){ S.myShops=undefined; S.role="account"; S.accStage="home"; render(); }
   else { await admLoad(); }
 }
 function admEditRead(){
@@ -1377,7 +1403,8 @@ async function admEditSave(){
   }catch(e){ err=e; }
   if(err){ const msg=opFail("Não foi possível salvar as alterações.", err); const el=document.getElementById("editerr"); if(el){ el.innerHTML=`<div class="errmsg">${msg}</div>`; el.scrollIntoView({block:"center"}); } return; }
   S.editShop=null;
-  if(S.editBack==="account"){ S.myShops=undefined; S.role="account"; S.accStage="home"; render(); }
+  if(S.editBack==="dash"){ S.myShops=undefined; S.role="barber"; S.tab="conta"; render(); }
+  else if(S.editBack==="account"){ S.myShops=undefined; S.role="account"; S.accStage="home"; render(); }
   else { await admLoad(); }
 }
 
@@ -1486,7 +1513,7 @@ main.addEventListener("click", e=>{
   else if(a==="doLogin"){ doLogin(); return; }
   else if(a==="doSignup"){ doSignup(); return; }
   else if(a==="accLogout"){ accLogout(); return; }
-  else if(a==="account"){ S.role="account"; S.accStage="home"; render(); return; }
+  else if(a==="account"){ goMinhaConta(); return; }
   else if(a==="toCreate"){ S.role="chooseType"; S.barberType=null; S.obStep=null; S.obDraft=null; render(); return; }
   else if(a==="toAdmin"){ S.role="admin"; render(); admLoad(); return; }
   else if(a.startsWith("admToggle:")){ const p=a.split(":"); admToggle(p[1], p[2]==="1"); return; }
@@ -1547,6 +1574,14 @@ if(brand){
   brand.addEventListener("click", goHome);
   brand.addEventListener("keydown", e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); goHome(); } });
 }
+// "Minha conta": donos caem direto no painel administrativo da barbearia
+async function goMinhaConta(){
+  toggleMenu(false);
+  if(!S.authEmail){ S.role="account"; S.accStage="home"; render(); return; }
+  if(S.myShops===undefined || S.myShops===null){ await loadMyShops(); }
+  if(S.myShops && S.myShops.length){ openDash(S.myShops[0].id); }
+  else { S.role="account"; S.accStage="home"; render(); }
+}
 // Seta de voltar no cabeçalho — só aparece onde há para onde voltar
 function canBack(){
   if(S.svcShop||S.barbShop||S.editShop||S.espEdit) return true;
@@ -1560,11 +1595,12 @@ function navBack(){
   if(S.espEdit){ S.espEdit=null; S.beEspDraft=""; render(); return; }
   if(S.svcShop){ svcExit(); return; }
   if(S.barbShop){ barbExit(); return; }
-  if(S.editShop){ S.editShop=null; render(); return; }
+  if(S.editShop){ editExit(); return; }
   if(S.role==="onboarding"){ const seq=obSteps(); if(seq.indexOf(S.obStep)>0){ obReadStep(); obGo(-1); } else { S.role="chooseType"; render(); } return; }
   if(S.role==="chooseType"){ S.role="client"; render(); return; }
   if(S.role==="cadastroEnviado"){ S.role="client"; S.step=1; S.shop=null; render(); return; }
-  if(S.role==="admin"||S.role==="barber"){ S.role="account"; S.accStage="home"; render(); return; }
+  if(S.role==="admin"){ S.role="account"; S.accStage="home"; render(); return; }
+  if(S.role==="barber"){ goHome(); return; }
   if(S.role==="account"){ if(S.accStage==="login"||S.accStage==="signup"){ S.accStage="home"; render(); } else { S.role="client"; render(); } return; }
   if(S.role==="client"){
     if(S.pixGen){ S.pixGen=false; render(); return; }
@@ -1579,10 +1615,9 @@ document.addEventListener("click", ()=> toggleMenu(false));
 menu.addEventListener("click", e=>{
   const t=e.target.closest("[data-m]"); if(!t) return;
   const m=t.dataset.m; toggleMenu(false);
-  if(m==="barber"){ if(!S.authEmail){ S.role="account"; S.accStage="signup"; } else { S.role="chooseType"; S.barberType=null; S.obStep=null; S.obDraft=null; } }
+  if(m==="barber"){ if(!S.authEmail){ S.role="account"; S.accStage="signup"; } else { S.role="chooseType"; S.barberType=null; S.obStep=null; S.obDraft=null; } render(); }
   else if(m==="client"){ S.role="client"; S.step=1; S.barber=null; S.service=null; S.time=null; S.shop=null; hydrate(); }
-  else if(m==="account"){ S.role="account"; S.accStage="home"; }
-  render();
+  else if(m==="account"){ goMinhaConta(); }
 });
 tabbar.addEventListener("click", e=>{ const t=e.target.closest(".tab"); if(!t)return; S.tab=t.dataset.tab; render(); });
 
