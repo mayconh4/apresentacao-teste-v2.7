@@ -193,6 +193,9 @@
 <div class="app">
   <header>
     <div class="logo" id="brand" role="button" tabindex="0" title="Ir para o início" aria-label="SeuBarba — ir para o início">Seu<span>Barba</span></div>
+    <span class="switch icon" id="backBtn" title="Voltar" aria-label="Voltar" style="display:none">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M15.4 4.6a1 1 0 0 1 0 1.4L9.4 12l6 6a1 1 0 0 1-1.4 1.4l-6.7-6.7a1 1 0 0 1 0-1.4l6.7-6.7a1 1 0 0 1 1.4 0Z"/></svg>
+    </span>
     <div class="usermenu">
       <span class="switch icon" id="userBtn" title="Menu" aria-label="Menu">
         <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3.4a4 4 0 1 1 0 8 4 4 0 0 1 0-8ZM4.8 20c0-3.9 3.2-6 7.2-6s7.2 2.1 7.2 6c0 .6-.5 1-1 1H5.8c-.6 0-1-.4-1-1Z"/></svg>
@@ -1371,6 +1374,7 @@ async function admEditSave(){
 }
 
 function render(){
+  updateBack();
   if(S.svcShop){ renderSvcEditor(); return; }
   if(S.barbShop){ renderAdminBarbers(); return; }
   if(S.editShop){ renderAdminEdit(); return; }
@@ -1530,6 +1534,34 @@ if(brand){
   brand.addEventListener("click", goHome);
   brand.addEventListener("keydown", e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); goHome(); } });
 }
+// Seta de voltar no cabeçalho — só aparece onde há para onde voltar
+function canBack(){
+  if(S.svcShop||S.barbShop||S.editShop||S.espEdit) return true;
+  if(S.role==="onboarding"||S.role==="chooseType"||S.role==="cadastroEnviado"||S.role==="admin"||S.role==="barber") return true;
+  if(S.role==="account") return true;
+  if(S.role==="client") return !!(S.shop || S.pixGen);
+  return false;
+}
+function navBack(){
+  toggleMenu(false);
+  if(S.espEdit){ S.espEdit=null; S.beEspDraft=""; render(); return; }
+  if(S.svcShop){ svcExit(); return; }
+  if(S.barbShop){ barbExit(); return; }
+  if(S.editShop){ S.editShop=null; render(); return; }
+  if(S.role==="onboarding"){ const seq=obSteps(); if(seq.indexOf(S.obStep)>0){ obReadStep(); obGo(-1); } else { S.role="chooseType"; render(); } return; }
+  if(S.role==="chooseType"){ S.role="client"; render(); return; }
+  if(S.role==="cadastroEnviado"){ S.role="client"; S.step=1; S.shop=null; render(); return; }
+  if(S.role==="admin"||S.role==="barber"){ S.role="account"; S.accStage="home"; render(); return; }
+  if(S.role==="account"){ if(S.accStage==="login"||S.accStage==="signup"){ S.accStage="home"; render(); } else { S.role="client"; render(); } return; }
+  if(S.role==="client"){
+    if(S.pixGen){ S.pixGen=false; render(); return; }
+    if(S.step>1){ S.step--; render(); return; }
+    if(S.shop){ S.shop=null; S.step=1; S.barber=null; S.service=null; S.time=null; S.dia=null; render(); return; }
+  }
+}
+function updateBack(){ const b=document.getElementById("backBtn"); if(b) b.style.display = canBack() ? "flex" : "none"; }
+const backBtn = document.getElementById("backBtn");
+if(backBtn) backBtn.addEventListener("click", e=>{ e.stopPropagation(); navBack(); });
 document.addEventListener("click", ()=> toggleMenu(false));
 menu.addEventListener("click", e=>{
   const t=e.target.closest("[data-m]"); if(!t) return;
