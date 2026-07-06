@@ -361,9 +361,12 @@ function labelDia(iso){
 // Link de WhatsApp para avisar a barbearia sobre o novo agendamento
 function waNumero(tel){ let d=String(tel||"").replace(/\D/g,""); if(!d) return ""; if(d.length<=11) d="55"+d; return d; }
 function waAgendamento(){
-  const num = waNumero(S.shop && S.shop.tel);
-  if(!num || !S.service) return "";
-  const barbeiro = S.barber==="any" ? "Qualquer barbeiro" : ((barbers.find(x=>x.id===S.barber)||{}).nome||"Barbeiro");
+  if(!S.service) return "";
+  // barbeiro específico com WhatsApp cadastrado recebe direto; senão vai para a barbearia
+  const barbeiroObj = S.barber!=="any" ? barbers.find(x=>x.id===S.barber) : null;
+  const num = waNumero((barbeiroObj && barbeiroObj.tel) || (S.shop && S.shop.tel));
+  if(!num) return "";
+  const barbeiro = barbeiroObj ? barbeiroObj.nome : "Qualquer barbeiro";
   const quando = (S.dia?labelDia(S.dia).top+" "+labelDia(S.dia).bot+" ":"") + "às " + hhmm(S.time);
   const cli = S.payer||{};
   const msg = `Novo agendamento na ${S.shop.nome}! ✂️\n`+
@@ -951,6 +954,7 @@ function admDemoBarb(){
   if(!isAdmin()) return;
   nbRead();
   S.nbNome = "Barbeiro Demo";
+  S.nbTel = "(11) 98888-7777";
   S.nbEspSel = ["Corte","Barba","Degradê"];
   S.nbEspDraft = "";
   render();
@@ -1090,10 +1094,12 @@ function renderAdminBarbers(){
   const sh = S.barbShop; const links = S.barbLinks||[]; const all = S.allBarbers||[];
   if(S.espEdit){
     const b = S.espEdit.barber;
-    let h = `<div class="eyebrow">Especialidades · ${b.nome}</div><h1 class="bg">O que ele faz?</h1><div class="hint" style="margin-top:-6px;margin-bottom:12px">Toque para marcar ou desmarcar. Adicione outras se precisar.</div><div id="barberr"></div>`;
+    let h = `<div class="eyebrow">Barbeiro · ${b.nome}</div><h1 class="bg">Dados do barbeiro</h1><div class="hint" style="margin-top:-6px;margin-bottom:12px">WhatsApp e especialidades. Os agendamentos chegam no WhatsApp abaixo.</div><div id="barberr"></div>`;
+    h += field("beTel","WhatsApp do barbeiro",{req:false,ph:"(11) 99999-9999",val:(S.espEdit.tel!==undefined?S.espEdit.tel:(b.tel||""))});
+    h += `<div class="sllbl" style="margin:8px 0 8px">Especialidades (toque para marcar)</div>`;
     h += espChips(S.espEdit.sel, "beEspTg");
     h += espCustomRow("beEspCustom", "beEspAdd", S.beEspDraft);
-    h += `<button class="btn" data-a="beEspSave">Salvar especialidades</button>`;
+    h += `<button class="btn" data-a="beEspSave">Salvar</button>`;
     h += `<button class="btn out" data-a="beEspCancel" style="margin-top:10px">Cancelar</button>`;
     main.innerHTML = h; return;
   }
@@ -1114,6 +1120,8 @@ function renderAdminBarbers(){
   }
   h += `<div class="sllbl" style="margin:16px 0 8px">Novo barbeiro</div>`;
   h += field("nbNome","Nome do barbeiro",{req:false,ph:"Ex.: Carlos Silva",val:S.nbNome||""});
+  h += field("nbTel","WhatsApp do barbeiro",{req:false,ph:"(11) 99999-9999",val:S.nbTel||""});
+  h += `<div class="formnote" style="margin:-4px 2px 10px;font-size:12px;color:var(--mut)">Os agendamentos deste barbeiro chegam neste WhatsApp.</div>`;
   h += `<div class="sllbl" style="margin:6px 0 8px">Especialidades (toque para marcar)</div>`;
   h += espChips(S.nbEspSel||[], "nbEspTg");
   h += espCustomRow("nbEspCustom", "nbEspAdd", S.nbEspDraft);
@@ -1133,6 +1141,7 @@ function opFail(prefix, err){
 function barbErr(msg){ const el=document.getElementById("barberr"); if(el){ el.innerHTML=`<div class="errmsg">${msg}</div>`; el.scrollIntoView({block:"center"}); } }
 function nbRead(){
   const n=document.getElementById("nbNome"); if(n) S.nbNome=n.value;
+  const t=document.getElementById("nbTel"); if(t) S.nbTel=t.value;
   const c=document.getElementById("nbEspCustom"); if(c) S.nbEspDraft=c.value;
 }
 async function admBarbOpen(shopId, back){
@@ -1150,7 +1159,7 @@ async function admBarbOpen(shopId, back){
 }
 function barbExit(){
   const back = S.barbBack || "admin";
-  S.barbShop=null; S.barbLinks=null; S.espEdit=null; S.barbBack=null; S.nbEspSel=null; S.nbNome=""; S.nbEspDraft="";
+  S.barbShop=null; S.barbLinks=null; S.espEdit=null; S.barbBack=null; S.nbEspSel=null; S.nbNome=""; S.nbTel=""; S.nbEspDraft="";
   S.role = (back==="account") ? "account" : "admin";
   if(back==="account") S.accStage="home";
   render();
@@ -1174,13 +1183,14 @@ async function admBarbNew(){
   const esp = (S.nbEspSel||[]).slice();
   const extra = cleanEsp(S.nbEspDraft);
   if(extra && esp.indexOf(extra)<0) esp.push(extra);
+  const tel = (S.nbTel||"").trim();
   let err=null, stage="barbers";
   try{
-    const r = await sb.from("barbers").insert({ nome:nome, especialidades:esp }).select("id").single();
+    const r = await sb.from("barbers").insert({ nome:nome, especialidades:esp, telefone:tel }).select("id").single();
     if(r.error){ err=r.error; }
     else { stage="barber_shops"; const r2 = await sb.from("barber_shops").insert({ shop_id:S.barbShop.id, barber_id:r.data.id }); err=r2.error; }
   }catch(ex){ err=ex; }
-  if(!err){ S.nbNome=""; S.nbEspSel=null; S.nbEspDraft=""; }
+  if(!err){ S.nbNome=""; S.nbTel=""; S.nbEspSel=null; S.nbEspDraft=""; }
   await admBarbOpen(S.barbShop.id);
   if(err) barbErr(opFail("Não foi possível criar o barbeiro (falha ao gravar em '"+stage+"').", err));
 }
@@ -1189,9 +1199,11 @@ async function beEspSave(){
   const c = document.getElementById("beEspCustom");
   const extra = cleanEsp(c&&c.value);
   if(extra && ed.sel.indexOf(extra)<0) ed.sel.push(extra);
+  const telEl = document.getElementById("beTel");
+  const tel = telEl ? telEl.value.trim() : (ed.tel!==undefined?ed.tel:(ed.barber.tel||""));
   let err=null;
-  try{ const r = await sb.from("barbers").update({ especialidades: ed.sel }).eq("id", ed.barber.id); err=r.error; }catch(e){ err=e; }
-  if(err){ barbErr(opFail("Não foi possível salvar as especialidades.", err)); return; }
+  try{ const r = await sb.from("barbers").update({ especialidades: ed.sel, telefone: tel }).eq("id", ed.barber.id); err=r.error; }catch(e){ err=e; }
+  if(err){ barbErr(opFail("Não foi possível salvar os dados do barbeiro.", err)); return; }
   S.espEdit=null; S.beEspDraft="";
   await admBarbOpen(S.barbShop.id);
 }
@@ -1273,13 +1285,14 @@ main.addEventListener("click", e=>{
     let bad=null; [nome,cpf,zap].forEach(el=>{ if(!el.value.trim()){ el.classList.add("err"); if(!bad)bad=el; } else el.classList.remove("err"); });
     if(bad){ document.getElementById("payerr").innerHTML=`<div class="errmsg">Preencha nome, CPF e WhatsApp.</div>`; bad.focus(); return; }
     S.payer={ nome:nome.value.trim(), cpf:cpf.value.trim(), zap:zap.value.trim() };
-    S.pixGen=true; S.pixData=null; S.pixTried=false; render(); createPixReal(); return;
+    S.pixGen=true; S.paid=false; S.pixData=null; S.pixTried=false; render(); createPixReal(); return;
   }
   else if(a==="fillpay"){
     S.payer={ nome:"Maycon Souza", cpf:"123.456.789-00", zap:"(11) 98888-7777" };
     render(); return;
   }
   else if(a==="pay"){
+    S.paid=true;
     const nomeCli = (S.payer&&S.payer.nome)||"Você";
     appointments.push({ id:"new", barbeiro:S.barber==="any"?"b1":S.barber, cliente:nomeCli, service:S.service.id, min:S.time, dia:S.dia, valor:S.service.preco, status:"pago" });
     let c=(fidelidade[nomeCli]||0); c = (c%10===0 && c>0) ? 1 : c+1; fidelidade[nomeCli]=c;
@@ -1296,7 +1309,7 @@ main.addEventListener("click", e=>{
     if(!S.stars){ document.querySelector(".ratelabel").innerHTML='<span style="color:var(--cancel)">Escolha de 1 a 5 estrelas</span>'; return; }
     S.rated=true; render(); return;
   }
-  else if(a==="reset"){ S.step=1; S.barber=null; S.service=null; S.time=null; S.dia=null; S.pixGen=false; S.payer=null; S.stars=0; S.rated=false; }
+  else if(a==="reset"){ S.step=1; S.barber=null; S.service=null; S.time=null; S.dia=null; S.pixGen=false; S.paid=false; S.payer=null; S.stars=0; S.rated=false; }
   else if(a==="save"){ saveOnboarding(); return; }
   else if(a==="obNext"){ obReadStep(); if(!obValidStep()) return; if(S.obStep<5){ S.obStep++; render(); } else { saveOnboarding(); } return; }
   else if(a==="obBack"){ obReadStep(); S.obStep--; render(); return; }
@@ -1361,8 +1374,8 @@ main.addEventListener("click", e=>{
   else if(a.startsWith("admBarb:")){ const p=a.split(":"); admBarbOpen(p[1], p[2]||"admin"); return; }
   else if(a.startsWith("nbEspTg:")){ nbRead(); const k=a.slice(8); S.nbEspSel=S.nbEspSel||[]; const ix=S.nbEspSel.indexOf(k); if(ix>=0) S.nbEspSel.splice(ix,1); else S.nbEspSel.push(k); render(); return; }
   else if(a==="nbEspAdd"){ nbRead(); const v=cleanEsp(S.nbEspDraft); if(v){ S.nbEspSel=S.nbEspSel||[]; if(S.nbEspSel.indexOf(v)<0) S.nbEspSel.push(v); S.nbEspDraft=""; } render(); return; }
-  else if(a.startsWith("beEspTg:")){ const c=document.getElementById("beEspCustom"); if(c) S.beEspDraft=c.value; const k=a.slice(8); const sel=S.espEdit.sel; const ix=sel.indexOf(k); if(ix>=0) sel.splice(ix,1); else sel.push(k); render(); return; }
-  else if(a==="beEspAdd"){ const c=document.getElementById("beEspCustom"); const v=cleanEsp(c&&c.value); if(v && S.espEdit && S.espEdit.sel.indexOf(v)<0) S.espEdit.sel.push(v); S.beEspDraft=""; render(); return; }
+  else if(a.startsWith("beEspTg:")){ const tEl=document.getElementById("beTel"); if(tEl&&S.espEdit) S.espEdit.tel=tEl.value; const c=document.getElementById("beEspCustom"); if(c) S.beEspDraft=c.value; const k=a.slice(8); const sel=S.espEdit.sel; const ix=sel.indexOf(k); if(ix>=0) sel.splice(ix,1); else sel.push(k); render(); return; }
+  else if(a==="beEspAdd"){ const tEl=document.getElementById("beTel"); if(tEl&&S.espEdit) S.espEdit.tel=tEl.value; const c=document.getElementById("beEspCustom"); const v=cleanEsp(c&&c.value); if(v && S.espEdit && S.espEdit.sel.indexOf(v)<0) S.espEdit.sel.push(v); S.beEspDraft=""; render(); return; }
   else if(a==="beEspSave"){ beEspSave(); return; }
   else if(a==="beEspCancel"){ S.espEdit=null; S.beEspDraft=""; render(); return; }
   else if(a==="admEditSave"){ admEditSave(); return; }
@@ -1393,7 +1406,7 @@ function goHome(){
   toggleMenu(false);
   S.svcShop=null; S.svcList=null; S.barbShop=null; S.barbLinks=null; S.espEdit=null; S.editShop=null;
   S.role="client"; S.step=1; S.shop=null; S.barber=null; S.service=null; S.time=null; S.dia=null;
-  S.pixGen=false; S.payer=null; S.stars=0; S.rated=false;
+  S.pixGen=false; S.paid=false; S.payer=null; S.stars=0; S.rated=false;
   hydrate();
 }
 const brand = document.getElementById("brand");
@@ -1436,7 +1449,7 @@ async function hydrate(){
         barbers: links.filter(l=>l.shop_id===s.id).map(l=>l.barber_id), slots:true, abre:s.abre, fecha:s.fecha, almocoIni:s.almoco_ini, almocoFim:s.almoco_fim, dias:s.dias }));
     }
     if(rBarbers.data && rBarbers.data.length){
-      barbers = rBarbers.data.map(b=>({ id:b.id, nome:b.nome, esp:b.especialidades||[], pct:0.4 }));
+      barbers = rBarbers.data.map(b=>({ id:b.id, nome:b.nome, esp:b.especialidades||[], tel:b.telefone||'', pct:0.4 }));
     }
     if(rSvcs.data && rSvcs.data.length){
       services = rSvcs.data.map(s=>({ id:s.id, nome:s.nome, preco:Number(s.preco), dur:s.duracao_min, shop_id:s.shop_id, cat:s.categoria }));
@@ -1461,7 +1474,8 @@ async function createPixReal(){
     if(d && d.qrImage){ S.pixData = { qrImage:d.qrImage, copiaECola:d.copiaECola, paymentId:d.paymentId }; }
   }catch(e){ console.log("PIX: usando simulado (funcao indisponivel)", e); }
   S.pixTried = true;
-  if(S.step===4 && S.pixGen) render();
+  // não re-renderizar se o pagamento já foi confirmado (não apagar a tela de sucesso)
+  if(S.step===4 && S.pixGen && !S.paid) render();
 }
 
 render();
