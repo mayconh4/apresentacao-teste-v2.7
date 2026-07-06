@@ -869,7 +869,7 @@ function renderAdmin(){
   main.innerHTML = h;
 }
 async function admLoad(){ try{ const { data } = await sb.from("shops").select("*").order("criado_em",{ascending:false}); S.adminShops=data||[]; }catch(e){ S.adminShops=[]; } render(); }
-async function admToggle(id, ativo){ try{ await sb.from("shops").update({ ativo: !!ativo }).eq("id", id); }catch(e){} await admLoad(); }
+async function admToggle(id, ativo){ let err=null; try{ const r = await sb.from("shops").update({ ativo: !!ativo }).eq("id", id); err=r.error; }catch(e){ err=e; } await admLoad(); if(err) opFail("Não foi possível alterar o status da barbearia.", err); }
 async function admDelShop(id){
   const sp = (S.adminShops||[]).find(function(x){ return x.id===id; });
   if(!window.confirm('Excluir definitivamente "'+((sp&&sp.nome)||'esta barbearia')+'"?\nOs serviços e a equipe vinculada também serão removidos.')) return;
@@ -880,7 +880,7 @@ async function admDelShop(id){
     const r = await sb.from("shops").delete().eq("id", id);
     err = r.error;
   }catch(e){ err=e; }
-  if(err) window.alert("Não foi possível excluir: "+(err.message||err));
+  if(err) opFail("Não foi possível excluir a barbearia.", err);
   await admLoad();
 }
 
@@ -901,7 +901,7 @@ function renderSvcEditor(){
   h += `<button class="btn out" data-a="svcBack" style="margin-top:12px">Voltar</button>`;
   main.innerHTML = h;
 }
-function svcErr(msg){ const el=document.getElementById("svcerr"); if(el) el.innerHTML=`<div class="errmsg">${msg}</div>`; }
+function svcErr(msg){ const el=document.getElementById("svcerr"); if(el){ el.innerHTML=`<div class="errmsg">${msg}</div>`; el.scrollIntoView({block:"center"}); } }
 async function svcOpen(shopId, back){
   if(back) S.svcBack = back;
   let sh = (S.adminShops||[]).concat(S.myShops||[]).find(function(x){ return x.id===shopId; }) || S.svcShop;
@@ -916,13 +916,13 @@ async function svcAdd(key){
   let err=null;
   try{ const r = await sb.from("services").insert({ shop_id: S.svcShop.id, nome:c.nome, preco:c.preco, duracao_min:c.dur, categoria:c.cat }); err=r.error; }catch(e){ err=e; }
   await svcOpen(S.svcShop.id);
-  if(err) svcErr("Não foi possível adicionar: "+(err.message||err));
+  if(err) svcErr(opFail("Não foi possível adicionar o serviço.", err));
 }
 async function svcDel(id){
   let err=null;
   try{ const r = await sb.from("services").delete().eq("id", id); err=r.error; }catch(e){ err=e; }
   await svcOpen(S.svcShop.id);
-  if(err) svcErr("Não foi possível remover: "+(err.message||err));
+  if(err) svcErr(opFail("Não foi possível remover o serviço.", err));
 }
 async function svcSave(id){
   const el = document.getElementById("svcprice_"+id); if(!el) return;
@@ -931,7 +931,7 @@ async function svcSave(id){
   let err=null;
   try{ const r = await sb.from("services").update({ preco: preco }).eq("id", id); err=r.error; }catch(e){ err=e; }
   await svcOpen(S.svcShop.id);
-  if(err) svcErr("Não foi possível salvar o preço: "+(err.message||err));
+  if(err) svcErr(opFail("Não foi possível salvar o preço.", err));
 }
 function svcExit(){
   const back = S.svcBack || "admin";
@@ -1005,7 +1005,15 @@ function renderAdminBarbers(){
   h += `<button class="btn out" data-a="admBarbBack" style="margin-top:10px">Voltar</button>`;
   main.innerHTML = h;
 }
-function barbErr(msg){ const el=document.getElementById("barberr"); if(el) el.innerHTML=`<div class="errmsg">${msg}</div>`; }
+function opFail(prefix, err){
+  const raw = (err && err.message) ? err.message : String(err);
+  let dica = "";
+  if(/row-level security|permission denied|violates row-level/i.test(raw))
+    dica = "\n\nDica: as políticas de acesso (RLS) do Supabase estão bloqueando a gravação. Fale com o administrador para liberar a escrita nesta tabela.";
+  try{ window.alert(prefix + "\n\n" + raw + dica); }catch(e){}
+  return prefix + " " + raw;
+}
+function barbErr(msg){ const el=document.getElementById("barberr"); if(el){ el.innerHTML=`<div class="errmsg">${msg}</div>`; el.scrollIntoView({block:"center"}); } }
 function nbRead(){
   const n=document.getElementById("nbNome"); if(n) S.nbNome=n.value;
   const c=document.getElementById("nbEspCustom"); if(c) S.nbEspDraft=c.value;
@@ -1034,13 +1042,13 @@ async function admBarbAdd(barberId){
   let err=null;
   try{ const r = await sb.from("barber_shops").insert({ shop_id: S.barbShop.id, barber_id: barberId }); err=r.error; }catch(e){ err=e; }
   await admBarbOpen(S.barbShop.id);
-  if(err) barbErr("Não foi possível incluir: "+(err.message||err));
+  if(err) barbErr(opFail("Não foi possível incluir o barbeiro.", err));
 }
 async function admBarbDel(barberId){
   let err=null;
   try{ const r = await sb.from("barber_shops").delete().eq("shop_id", S.barbShop.id).eq("barber_id", barberId); err=r.error; }catch(e){ err=e; }
   await admBarbOpen(S.barbShop.id);
-  if(err) barbErr("Não foi possível retirar: "+(err.message||err));
+  if(err) barbErr(opFail("Não foi possível retirar o barbeiro.", err));
 }
 async function admBarbNew(){
   nbRead();
@@ -1049,15 +1057,15 @@ async function admBarbNew(){
   const esp = (S.nbEspSel||[]).slice();
   const extra = cleanEsp(S.nbEspDraft);
   if(extra && esp.indexOf(extra)<0) esp.push(extra);
-  let err=null;
+  let err=null, stage="barbers";
   try{
     const r = await sb.from("barbers").insert({ nome:nome, especialidades:esp }).select("id").single();
-    if(r.error) err=r.error;
-    else { const r2 = await sb.from("barber_shops").insert({ shop_id:S.barbShop.id, barber_id:r.data.id }); err=r2.error; }
+    if(r.error){ err=r.error; }
+    else { stage="barber_shops"; const r2 = await sb.from("barber_shops").insert({ shop_id:S.barbShop.id, barber_id:r.data.id }); err=r2.error; }
   }catch(ex){ err=ex; }
   if(!err){ S.nbNome=""; S.nbEspSel=null; S.nbEspDraft=""; }
   await admBarbOpen(S.barbShop.id);
-  if(err) barbErr("Não foi possível criar: "+(err.message||err));
+  if(err) barbErr(opFail("Não foi possível criar o barbeiro (falha ao gravar em '"+stage+"').", err));
 }
 async function beEspSave(){
   const ed = S.espEdit; if(!ed) return;
@@ -1066,7 +1074,7 @@ async function beEspSave(){
   if(extra && ed.sel.indexOf(extra)<0) ed.sel.push(extra);
   let err=null;
   try{ const r = await sb.from("barbers").update({ especialidades: ed.sel }).eq("id", ed.barber.id); err=r.error; }catch(e){ err=e; }
-  if(err){ barbErr("Não foi possível salvar: "+(err.message||err)); return; }
+  if(err){ barbErr(opFail("Não foi possível salvar as especialidades.", err)); return; }
   S.espEdit=null; S.beEspDraft="";
   await admBarbOpen(S.barbShop.id);
 }
@@ -1116,7 +1124,7 @@ async function admEditSave(){
     }).eq("id", sp.id);
     err=r.error;
   }catch(e){ err=e; }
-  if(err){ const el=document.getElementById("editerr"); if(el) el.innerHTML=`<div class="errmsg">Não foi possível salvar: ${err.message||err}</div>`; return; }
+  if(err){ const msg=opFail("Não foi possível salvar as alterações.", err); const el=document.getElementById("editerr"); if(el){ el.innerHTML=`<div class="errmsg">${msg}</div>`; el.scrollIntoView({block:"center"}); } return; }
   S.editShop=null;
   await admLoad();
 }
