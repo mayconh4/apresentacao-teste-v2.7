@@ -394,7 +394,7 @@ function renderClient(){
         `</div>`;
     h+=`<div class="lr" style="margin-top:6px"><span class="c">${b} · ${S.service.nome} · ${hhmm(S.time)}</span><b>${fmt(S.service.preco)}</b></div>`;
     h+=`<button class="btn" data-a="genpix">Gerar PIX</button>`;
-    h+=`<button class="btn out" data-a="fillpay">Preencher para teste</button>`;
+    h+=demoBtn("fillpay");
   }
   if(S.step===5){
     const labels=["","Péssimo","Ruim","Regular","Bom","Excelente"];
@@ -521,6 +521,7 @@ function renderOnboarding(){
   }
   h += `<button class="btn" data-a="obNext">${step<5?'Continuar':'Criar conta'}</button>`;
   if(step>1) h += `<button class="btn out" data-a="obBack">Voltar</button>`;
+  h += demoBtn("admDemoOb");
   main.innerHTML=h;
 }
 
@@ -850,6 +851,45 @@ function renderBarber(){
 
 /* ---------- Admin (restrito ao e-mail do administrador) ---------- */
 const ADMIN_EMAIL = "maycontuliofs@gmail.com";
+function isAdmin(){ return (S.authEmail||"").toLowerCase()===ADMIN_EMAIL; }
+// Botão "Preencher demo" — só aparece para o admin, em qualquer tela com formulário
+function demoBtn(action){ return isAdmin() ? `<button class="btn out" data-a="${action}" style="margin-top:8px;border-style:dashed">⚡ Preencher demo (admin)</button>` : ""; }
+const DEMO_OB = {
+  nomeFantasia:"Barbearia Demo", cpfCnpj:"12345678000190", companyType:"MEI", incomeValue:"8000",
+  respNome:"Maycon Demo", email:"demo@seubarba.app", mobilePhone:"(11) 98888-7777", birthDate:"10/05/1990",
+  postalCode:"01001-000", addressNumber:"100", address:"Praça da Sé", province:"Sé",
+  abre:"08:00", fecha:"19:00", almocoIni:"12:00", almocoFim:"13:00", dias:["seg","ter","qua","qui","sex","sab"]
+};
+// preenche TODAS as etapas do cadastro de uma vez, para o admin avançar por qualquer uma
+function admDemoOb(){
+  if(!isAdmin()) return;
+  obReadStep();
+  S.obDraft = Object.assign({}, S.obDraft, DEMO_OB);
+  S.obDraft.svc = S.obDraft.svc || {};
+  ["corte","cortebarba","barba"].forEach(function(k){ const c=CATALOGO.find(function(x){ return x.key===k; }); if(c) S.obDraft.svc[k]={nome:c.nome,preco:c.preco,dur:c.dur,cat:c.cat}; });
+  S.obDraft.dias = DEMO_OB.dias.slice();
+  render();
+}
+// preenche o formulário de novo barbeiro
+function admDemoBarb(){
+  if(!isAdmin()) return;
+  nbRead();
+  S.nbNome = "Barbeiro Demo";
+  S.nbEspSel = ["Corte","Barba","Degradê"];
+  S.nbEspDraft = "";
+  render();
+}
+// preenche a edição da barbearia
+function admDemoEdit(){
+  if(!isAdmin() || !S.editShop) return;
+  admEditRead();
+  Object.assign(S.editShop, {
+    nome:"Barbearia Demo", bairro:"Centro", responsavel:"Maycon Demo", email:"demo@seubarba.app",
+    telefone:"(11) 98888-7777", cep:"01001-000", numero:"100", logradouro:"Praça da Sé",
+    abre:8, fecha:19, almoco_ini:12, almoco_fim:13, dias:["seg","ter","qua","qui","sex","sab"]
+  });
+  render();
+}
 function renderAdmin(){
   tabbar.style.display="none"; steps.style.display="none";
   if((S.authEmail||"").toLowerCase()!==ADMIN_EMAIL){
@@ -1002,6 +1042,7 @@ function renderAdminBarbers(){
   h += espChips(S.nbEspSel||[], "nbEspTg");
   h += espCustomRow("nbEspCustom", "nbEspAdd", S.nbEspDraft);
   h += `<button class="btn" data-a="admBarbNew">Criar e incluir na equipe</button>`;
+  h += demoBtn("admDemoBarb");
   h += `<button class="btn out" data-a="admBarbBack" style="margin-top:10px">Voltar</button>`;
   main.innerHTML = h;
 }
@@ -1098,6 +1139,7 @@ function renderAdminEdit(){
   h += `<div class="grid2">`+field("edAbre","Abre",{opts:HORAS,val:horaSel(sp.abre)||"08:00"})+field("edFecha","Fecha",{opts:HORAS,val:horaSel(sp.fecha)||"19:00"})+`</div>`;
   h += `<div class="grid2">`+field("edAlmIni","Almoço início",{req:false,opts:HORAS_OPC,val:horaSel(sp.almoco_ini)})+field("edAlmFim","Almoço fim",{req:false,opts:HORAS_OPC,val:horaSel(sp.almoco_fim)})+`</div>`;
   h += `<button class="btn" data-a="admEditSave">Salvar alterações</button>`;
+  h += demoBtn("admDemoEdit");
   h += `<button class="btn out" data-a="admEditBack" style="margin-top:10px">Voltar</button>`;
   main.innerHTML = h;
 }
@@ -1158,7 +1200,7 @@ main.addEventListener("click", e=>{
   }
   else if(a==="fillpay"){
     S.payer={ nome:"Maycon Souza", cpf:"123.456.789-00", zap:"(11) 98888-7777" };
-    S.pixGen=true; render(); return;
+    render(); return;
   }
   else if(a==="pay"){
     const nomeCli = (S.payer&&S.payer.nome)||"Você";
@@ -1178,6 +1220,9 @@ main.addEventListener("click", e=>{
   else if(a==="save"){ saveOnboarding(); return; }
   else if(a==="obNext"){ obReadStep(); if(!obValidStep()) return; if(S.obStep<5){ S.obStep++; render(); } else { saveOnboarding(); } return; }
   else if(a==="obBack"){ obReadStep(); S.obStep--; render(); return; }
+  else if(a==="admDemoOb"){ admDemoOb(); return; }
+  else if(a==="admDemoBarb"){ admDemoBarb(); return; }
+  else if(a==="admDemoEdit"){ admDemoEdit(); return; }
   else if(a.startsWith("svcToggle:")){ const key=a.split(":")[1]; if(!S.obDraft) S.obDraft={}; if(!S.obDraft.svc) S.obDraft.svc={}; Object.keys(S.obDraft.svc).forEach(function(k){ const el=document.getElementById("svcp_"+k); if(el) S.obDraft.svc[k].preco=Number(el.value)||S.obDraft.svc[k].preco; }); if(S.obDraft.svc[key]) delete S.obDraft.svc[key]; else { const c=CATALOGO.find(function(x){return x.key===key;}); if(c) S.obDraft.svc[key]={nome:c.nome,preco:c.preco,dur:c.dur,cat:c.cat}; } render(); return; }
   else if(a.startsWith("diaToggle:")){ obReadStep(); const dk=a.split(":")[1]; if(!S.obDraft.dias) S.obDraft.dias=[]; const ix=S.obDraft.dias.indexOf(dk); if(ix>=0) S.obDraft.dias.splice(ix,1); else S.obDraft.dias.push(dk); render(); return; }
   else if(a==="skip"){
