@@ -649,7 +649,7 @@ function renderAccount(){
       } else S.myShops.forEach(function(sp){
         const st = sp.ativo ? `<span class="chip ok">Ativa</span>` : `<span class="chip" style="background:rgba(255,159,10,.2);color:#a86400">Pendente</span>`;
         h += `<div class="box" style="margin-bottom:10px"><div style="display:flex;align-items:center;gap:10px"><div style="flex:1"><div class="nm" style="font-size:15px">${sp.nome||"(sem nome)"}</div><div class="sb">${sp.bairro||""}</div></div>${st}</div>
-          <div class="fidwrap" style="justify-content:flex-end;gap:8px"><button class="btn small" data-a="svcOpen:${sp.id}:account">Serviços e preços</button></div></div>`;
+          <div class="fidwrap" style="justify-content:flex-end;gap:8px;flex-wrap:wrap"><button class="btn out small" data-a="admBarb:${sp.id}:account">Equipe</button><button class="btn small" data-a="svcOpen:${sp.id}:account">Serviços e preços</button></div></div>`;
       });
     } else {
       h += `<h1 class="bg">Sua conta</h1><div class="hint" style="margin-top:-6px;margin-bottom:14px">Acesse sua conta ou crie uma nova.</div>`;
@@ -952,17 +952,43 @@ async function loadMyShops(){
   if(S.role==="account") render();
 }
 
-/* ---------- Barbeiros da barbearia (admin) ---------- */
+/* ---------- Equipe da barbearia (admin e dono) ---------- */
+const ESPECIALIDADES = ["Corte","Barba","Degradê","Navalhado","Pintura","Pigmentação","Sobrancelha","Platinado","Luzes","Alisamento","Social","Infantil"];
+function cleanEsp(v){ return (v||"").trim().replace(/["'<>&]/g,"").slice(0,30); }
+function espChips(sel, action){
+  const extras = (sel||[]).filter(function(x){ return ESPECIALIDADES.indexOf(x)<0; });
+  const all = ESPECIALIDADES.concat(extras);
+  let h = `<div class="slots" style="grid-template-columns:repeat(3,1fr);margin-bottom:12px">`;
+  all.forEach(function(x){
+    const on = (sel||[]).indexOf(x)>=0;
+    h += `<div class="slot ${on?"sel":""}" style="font-size:13px;padding:12px 4px" data-a="${action}:${x}">${x}</div>`;
+  });
+  h += `</div>`;
+  return h;
+}
+function espCustomRow(inputId, action, val){
+  return `<div style="display:flex;gap:8px;align-items:stretch;margin-bottom:14px"><div class="field" style="flex:1;margin:0"><input id="${inputId}" type="text" placeholder="Outra especialidade… Ex.: Relaxamento" value="${val||""}"></div><button class="btn out small" data-a="${action}" style="white-space:nowrap">Adicionar</button></div>`;
+}
 function renderAdminBarbers(){
   tabbar.style.display="none"; steps.style.display="none";
   const sh = S.barbShop; const links = S.barbLinks||[]; const all = S.allBarbers||[];
+  if(S.espEdit){
+    const b = S.espEdit.barber;
+    let h = `<div class="eyebrow">Especialidades · ${b.nome}</div><h1 class="bg">O que ele faz?</h1><div class="hint" style="margin-top:-6px;margin-bottom:12px">Toque para marcar ou desmarcar. Adicione outras se precisar.</div><div id="barberr"></div>`;
+    h += espChips(S.espEdit.sel, "beEspTg");
+    h += espCustomRow("beEspCustom", "beEspAdd", S.beEspDraft);
+    h += `<button class="btn" data-a="beEspSave">Salvar especialidades</button>`;
+    h += `<button class="btn out" data-a="beEspCancel" style="margin-top:10px">Cancelar</button>`;
+    main.innerHTML = h; return;
+  }
   const inShop = links.map(function(l){ return all.find(function(b){ return b.id===l.barber_id; }) || {id:l.barber_id, nome:"(barbeiro)"}; });
   const out = all.filter(function(b){ return !links.some(function(l){ return l.barber_id===b.id; }); });
   let h = `<div class="eyebrow">Barbeiros · ${sh.nome||""}</div><h1 class="bg">Equipe da barbearia</h1><div class="hint" style="margin-top:-6px;margin-bottom:12px">Inclua ou retire barbeiros desta barbearia.</div><div id="barberr"></div>`;
   h += `<div class="sllbl" style="margin:4px 0 8px">Na equipe</div>`;
   if(!inShop.length) h += `<div class="lr" style="justify-content:center;color:var(--mut)">Nenhum barbeiro nesta barbearia ainda.</div>`;
   inShop.forEach(function(b){
-    h += `<div class="box" style="margin-bottom:10px;border-color:var(--gold)"><div style="display:flex;align-items:center;gap:10px"><div style="flex:1"><div class="nm" style="font-size:15px">${b.nome}</div><div class="sb">${(b.especialidades||[]).join(" · ")}</div></div><button class="btn out small" data-a="admBarbDel:${b.id}">Retirar</button></div></div>`;
+    h += `<div class="box" style="margin-bottom:10px;border-color:var(--gold)"><div style="display:flex;align-items:center;gap:10px"><div style="flex:1"><div class="nm" style="font-size:15px">${b.nome}</div><div class="sb">${(b.especialidades||[]).join(" · ")||"sem especialidades"}</div></div></div>
+      <div class="fidwrap" style="justify-content:flex-end;gap:8px;margin-top:8px"><button class="btn out small" data-a="admBarbEd:${b.id}">Especialidades</button><button class="btn out small" data-a="admBarbDel:${b.id}">Retirar</button></div></div>`;
   });
   if(out.length){
     h += `<div class="sllbl" style="margin:16px 0 8px">Outros barbeiros cadastrados</div>`;
@@ -972,20 +998,36 @@ function renderAdminBarbers(){
   }
   h += `<div class="sllbl" style="margin:16px 0 8px">Novo barbeiro</div>`;
   h += field("nbNome","Nome do barbeiro",{req:false,ph:"Ex.: Carlos Silva",val:S.nbNome||""});
-  h += field("nbEsp","Especialidades (opcional, separe por vírgula)",{req:false,ph:"Ex.: Corte, Barba",val:S.nbEsp||""});
+  h += `<div class="sllbl" style="margin:6px 0 8px">Especialidades (toque para marcar)</div>`;
+  h += espChips(S.nbEspSel||[], "nbEspTg");
+  h += espCustomRow("nbEspCustom", "nbEspAdd", S.nbEspDraft);
   h += `<button class="btn" data-a="admBarbNew">Criar e incluir na equipe</button>`;
   h += `<button class="btn out" data-a="admBarbBack" style="margin-top:10px">Voltar</button>`;
   main.innerHTML = h;
 }
 function barbErr(msg){ const el=document.getElementById("barberr"); if(el) el.innerHTML=`<div class="errmsg">${msg}</div>`; }
-async function admBarbOpen(shopId){
-  const sh = (S.adminShops||[]).find(function(x){ return x.id===shopId; }) || S.barbShop; if(!sh) return;
+function nbRead(){
+  const n=document.getElementById("nbNome"); if(n) S.nbNome=n.value;
+  const c=document.getElementById("nbEspCustom"); if(c) S.nbEspDraft=c.value;
+}
+async function admBarbOpen(shopId, back){
+  if(back) S.barbBack = back;
+  let sh = (S.adminShops||[]).concat(S.myShops||[]).find(function(x){ return x.id===shopId; }) || S.barbShop;
+  if(!sh || sh.id!==shopId){ try{ const { data } = await sb.from("shops").select("*").eq("id", shopId).single(); sh=data; }catch(e){} }
+  if(!sh) return;
   S.barbShop = sh;
   try{
     const rB = await sb.from("barbers").select("*");
     const rL = await sb.from("barber_shops").select("*").eq("shop_id", shopId);
     S.allBarbers = rB.data||[]; S.barbLinks = rL.data||[];
   }catch(e){ S.allBarbers=S.allBarbers||[]; S.barbLinks=S.barbLinks||[]; }
+  render();
+}
+function barbExit(){
+  const back = S.barbBack || "admin";
+  S.barbShop=null; S.barbLinks=null; S.espEdit=null; S.barbBack=null; S.nbEspSel=null; S.nbNome=""; S.nbEspDraft="";
+  S.role = (back==="account") ? "account" : "admin";
+  if(back==="account") S.accStage="home";
   render();
 }
 async function admBarbAdd(barberId){
@@ -1001,19 +1043,32 @@ async function admBarbDel(barberId){
   if(err) barbErr("Não foi possível retirar: "+(err.message||err));
 }
 async function admBarbNew(){
-  const n=document.getElementById("nbNome"), e=document.getElementById("nbEsp");
-  S.nbNome = n?n.value.trim():""; S.nbEsp = e?e.value.trim():"";
-  if(!S.nbNome){ if(n){ n.classList.add("err"); n.focus(); } return; }
-  const esp = S.nbEsp ? S.nbEsp.split(",").map(function(x){ return x.trim(); }).filter(Boolean) : [];
+  nbRead();
+  const nome = (S.nbNome||"").trim();
+  if(!nome){ const n=document.getElementById("nbNome"); if(n){ n.classList.add("err"); n.focus(); } return; }
+  const esp = (S.nbEspSel||[]).slice();
+  const extra = cleanEsp(S.nbEspDraft);
+  if(extra && esp.indexOf(extra)<0) esp.push(extra);
   let err=null;
   try{
-    const r = await sb.from("barbers").insert({ nome:S.nbNome, especialidades:esp }).select("id").single();
+    const r = await sb.from("barbers").insert({ nome:nome, especialidades:esp }).select("id").single();
     if(r.error) err=r.error;
     else { const r2 = await sb.from("barber_shops").insert({ shop_id:S.barbShop.id, barber_id:r.data.id }); err=r2.error; }
   }catch(ex){ err=ex; }
-  if(!err){ S.nbNome=""; S.nbEsp=""; }
+  if(!err){ S.nbNome=""; S.nbEspSel=null; S.nbEspDraft=""; }
   await admBarbOpen(S.barbShop.id);
   if(err) barbErr("Não foi possível criar: "+(err.message||err));
+}
+async function beEspSave(){
+  const ed = S.espEdit; if(!ed) return;
+  const c = document.getElementById("beEspCustom");
+  const extra = cleanEsp(c&&c.value);
+  if(extra && ed.sel.indexOf(extra)<0) ed.sel.push(extra);
+  let err=null;
+  try{ const r = await sb.from("barbers").update({ especialidades: ed.sel }).eq("id", ed.barber.id); err=r.error; }catch(e){ err=e; }
+  if(err){ barbErr("Não foi possível salvar: "+(err.message||err)); return; }
+  S.espEdit=null; S.beEspDraft="";
+  await admBarbOpen(S.barbShop.id);
 }
 
 /* ---------- Edição completa da barbearia (admin) ---------- */
@@ -1168,8 +1223,15 @@ main.addEventListener("click", e=>{
   else if(a.startsWith("admBarbAdd:")){ admBarbAdd(a.slice(11)); return; }
   else if(a.startsWith("admBarbDel:")){ admBarbDel(a.slice(11)); return; }
   else if(a==="admBarbNew"){ admBarbNew(); return; }
-  else if(a==="admBarbBack"){ S.barbShop=null; S.barbLinks=null; S.role="admin"; render(); return; }
-  else if(a.startsWith("admBarb:")){ admBarbOpen(a.slice(8)); return; }
+  else if(a==="admBarbBack"){ barbExit(); return; }
+  else if(a.startsWith("admBarbEd:")){ const b=(S.allBarbers||[]).find(function(x){ return x.id===a.slice(10); }); if(b){ S.espEdit={ barber:b, sel:(b.especialidades||[]).slice() }; S.beEspDraft=""; render(); } return; }
+  else if(a.startsWith("admBarb:")){ const p=a.split(":"); admBarbOpen(p[1], p[2]||"admin"); return; }
+  else if(a.startsWith("nbEspTg:")){ nbRead(); const k=a.slice(8); S.nbEspSel=S.nbEspSel||[]; const ix=S.nbEspSel.indexOf(k); if(ix>=0) S.nbEspSel.splice(ix,1); else S.nbEspSel.push(k); render(); return; }
+  else if(a==="nbEspAdd"){ nbRead(); const v=cleanEsp(S.nbEspDraft); if(v){ S.nbEspSel=S.nbEspSel||[]; if(S.nbEspSel.indexOf(v)<0) S.nbEspSel.push(v); S.nbEspDraft=""; } render(); return; }
+  else if(a.startsWith("beEspTg:")){ const c=document.getElementById("beEspCustom"); if(c) S.beEspDraft=c.value; const k=a.slice(8); const sel=S.espEdit.sel; const ix=sel.indexOf(k); if(ix>=0) sel.splice(ix,1); else sel.push(k); render(); return; }
+  else if(a==="beEspAdd"){ const c=document.getElementById("beEspCustom"); const v=cleanEsp(c&&c.value); if(v && S.espEdit && S.espEdit.sel.indexOf(v)<0) S.espEdit.sel.push(v); S.beEspDraft=""; render(); return; }
+  else if(a==="beEspSave"){ beEspSave(); return; }
+  else if(a==="beEspCancel"){ S.espEdit=null; S.beEspDraft=""; render(); return; }
   else if(a==="admEditSave"){ admEditSave(); return; }
   else if(a==="admEditBack"){ S.editShop=null; render(); return; }
   else if(a.startsWith("admEdit:")){ const sp=(S.adminShops||[]).find(function(x){ return x.id===a.slice(8); }); if(sp){ S.editShop=JSON.parse(JSON.stringify(sp)); render(); } return; }
