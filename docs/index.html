@@ -858,7 +858,7 @@ async function doSignup(){
     if(!data.session){ S.loginPending=false; S.accStage="login"; render(); accErr("Conta criada! Confirme pelo e-mail (se pedido) e entre."); return; }
   }catch(err){ S.loginPending=false; accErr("Erro ao criar conta."); }
 }
-async function accLogout(){ try{ await sb.auth.signOut(); }catch(e){} S.authEmail=""; S.accStage="home"; render(); }
+async function accLogout(){ try{ await sb.auth.signOut(); }catch(e){} S.authEmail=""; S.myShops=undefined; S.myShopsPromise=null; S.accStage="home"; goHome(); }
 
 /* ---------- Barbeiro ---------- */
 function renderBarber(){
