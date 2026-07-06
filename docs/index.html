@@ -543,6 +543,20 @@ function field(id,label,{req=true,type="text",ph="",val="",opts=null}={}){
   }
   return `<div class="field"><label>${label}${star}</label><input id="${id}" type="${type}" placeholder="${ph}" value="${val}" ${req?'data-req="1"':''}></div>`;
 }
+// dd/mm/aaaa -> aaaa-mm-dd (formato aceito pelo banco); null se vazio/incompleto
+function brDateToISO(v){
+  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(v||"");
+  return m ? m[3]+"-"+m[2]+"-"+m[1] : null;
+}
+// Máscara automática dd/mm/aaaa: insere as barras conforme os números são digitados
+document.addEventListener("input", function(e){
+  if(!e.target || e.target.id!=="birthDate") return;
+  const d = e.target.value.replace(/\D/g,"").slice(0,8);
+  let v = d;
+  if(d.length>4) v = d.slice(0,2)+"/"+d.slice(2,4)+"/"+d.slice(4);
+  else if(d.length>2) v = d.slice(0,2)+"/"+d.slice(2);
+  e.target.value = v;
+});
 // Cadastro por partes: primeiro só a barbearia. Equipe, serviços e modelo
 // de atendimento são configurados depois, no menu da barbearia (Minha conta).
 function obSteps(){
@@ -590,7 +604,7 @@ function renderOnboarding(){
       field("email","E-mail",{type:"email",ph:"voce@email.com",val:obVal("email")})+
       field("mobilePhone","Celular (WhatsApp)",{ph:"(11) 99999-9999",val:obVal("mobilePhone")})+
       `</div>`;
-    h += field("birthDate","Data de nascimento",{type:"text",ph:"dd/mm/aaaa",val:obVal("birthDate")});
+    h += field("birthDate","Data de nascimento",{type:"tel",ph:"dd/mm/aaaa",val:obVal("birthDate")});
   }
   else if(key==="endereco"){
     h += `<div class="grid2">`+
@@ -739,7 +753,7 @@ async function saveOnboarding(){
       const { data: shopRow, error } = await sb.from("shops").insert({
         owner_id: uid, nome: d.nomeFantasia, bairro: d.province || "", ativo: false,
         cpf_cnpj: d.cpfCnpj, tipo_empresa: d.companyType, faturamento: Number(d.incomeValue)||null,
-        responsavel: d.respNome, email: d.email, telefone: d.mobilePhone, nascimento: d.birthDate||null,
+        responsavel: d.respNome, email: d.email, telefone: d.mobilePhone, nascimento: brDateToISO(d.birthDate),
         cep: d.postalCode, logradouro: d.address, numero: d.addressNumber,
         abre: (d.abre?parseInt(d.abre.split(":")[0],10):8), fecha: (d.fecha?parseInt(d.fecha.split(":")[0],10):19),
         almoco_ini: (d.almocoIni?parseInt(d.almocoIni.split(":")[0],10):null), almoco_fim: (d.almocoFim?parseInt(d.almocoFim.split(":")[0],10):null),
