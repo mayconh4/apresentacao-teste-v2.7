@@ -1164,14 +1164,18 @@ function svcExit(){
 }
 
 /* ---------- Minhas barbearias (dono) ---------- */
-async function loadMyShops(){
-  if(S.myShopsLoading) return; S.myShopsLoading=true;
-  let uid=null;
-  try{ const { data } = await sb.auth.getSession(); uid = data&&data.session&&data.session.user ? data.session.user.id : null; }catch(e){}
-  if(!uid){ S.myShops=[]; S.myShopsLoading=false; if(S.role==="account"||S.role==="barber") render(); return; }
-  try{ const { data } = await sb.from("shops").select("*").eq("owner_id", uid).order("criado_em",{ascending:false}); S.myShops=data||[]; }catch(e){ S.myShops=[]; }
-  S.myShopsLoading=false;
-  if(S.role==="account"||S.role==="barber") render();
+function loadMyShops(){
+  // guarda a promessa em andamento para quem chamar de novo poder aguardá-la
+  if(S.myShopsPromise) return S.myShopsPromise;
+  S.myShopsPromise = (async function(){
+    let uid=null;
+    try{ const { data } = await sb.auth.getSession(); uid = data&&data.session&&data.session.user ? data.session.user.id : null; }catch(e){}
+    if(!uid){ S.myShops=[]; }
+    else { try{ const { data } = await sb.from("shops").select("*").eq("owner_id", uid).order("criado_em",{ascending:false}); S.myShops=data||[]; }catch(e){ S.myShops=[]; } }
+    S.myShopsPromise=null;
+    if(S.role==="account"||S.role==="barber") render();
+  })();
+  return S.myShopsPromise;
 }
 // abre o painel/dashboard da barbearia (agenda, ganhos, metas, comissões, equipe)
 async function openDash(shopId){
@@ -1625,7 +1629,7 @@ tabbar.addEventListener("click", e=>{ const t=e.target.closest(".tab"); if(!t)re
 const SB_URL="https://xprofyturjjhzjjjvgca.supabase.co";
 const SB_KEY="sb_publishable_y1y1j1gapNqt-7w5IMmyYg_M_Usm-7j";
 let sb=null; try{ sb = window.supabase.createClient(SB_URL, SB_KEY); }catch(e){}
-if(sb){ try{ refreshAuth(); sb.auth.onAuthStateChange(function(ev, session){ S.authEmail=(session&&session.user&&session.user.email)||""; S.myShops=undefined; if(ev==="SIGNED_IN" && S.loginPending){ S.loginPending=false; S.role="account"; S.accStage="home"; render(); } }); }catch(e){} }
+if(sb){ try{ refreshAuth(); sb.auth.onAuthStateChange(function(ev, session){ S.authEmail=(session&&session.user&&session.user.email)||""; S.myShops=undefined; S.myShopsPromise=null; if(ev==="SIGNED_IN" && S.loginPending){ S.loginPending=false; goMinhaConta(); } }); }catch(e){} }
 async function hydrate(){
   if(!sb){ S.shopLoad="erro: sem conexao"; render(); return; }
   S.shopLoad="loading"; render();
