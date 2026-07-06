@@ -319,12 +319,13 @@ const ICONS = {
   gift: SV('<path d="M11 8H4.6c-.6 0-1.1.5-1.1 1.1v2.3c0 .4.3.7.7.7H11V8Zm2 0v4.1h6.8c.4 0 .7-.3.7-.7V9.1c0-.6-.5-1.1-1.1-1.1H13Zm-2 6H5v6.1c0 .5.4.9.9.9H11v-7Zm2 0v7h5.1c.5 0 .9-.4.9-.9V14h-6ZM8.2 3.3C9.7 2.8 11 4.4 11.6 6.3H9.9c-1.1 0-2.1-.5-2.4-1.4-.2-.7.1-1.4.7-1.6Zm7.6 0c.6.2.9.9.7 1.6-.3.9-1.3 1.4-2.4 1.4h-1.7C13 4.4 14.3 2.8 15.8 3.3Z"/>'),
 };
 
-function slotsLivres(barbeiroId, dur, passo, hor){
-  passo = passo||30; hor = hor||horario;
+function slotsLivres(barbeiroId, dur, passo, hor, minMin){
+  passo = passo||30; hor = hor||horario; minMin = minMin||0;
   const ocup = appointments.filter(a => (barbeiroId==="any"||a.barbeiro===barbeiroId) && a.status!=="cancelado")
     .map(a => ({ ini:a.min, fim:a.min + (services.find(s=>s.id===a.service)?.dur||30) }));
   const out=[];
   for(let m=hor.abre*60; m+dur<=hor.fecha*60; m+=passo){
+    if(m < minMin) continue;                 // horário já passou hoje — indisponível
     const fim=m+dur; let conf=false;
     if(hor.almocoIni!=null && hor.almocoFim!=null && m < hor.almocoFim*60 && hor.almocoIni*60 < fim) conf=true;
     for(const o of ocup){ if(m<o.fim && o.ini<fim){ conf=true; break; } }
@@ -352,6 +353,22 @@ function labelDia(iso){
   const diff = Math.round((d-hoje)/86400000);
   const top = diff===0 ? "Hoje" : diff===1 ? "Amanhã" : DIAS_ABBR[d.getDay()];
   return { top: top, bot: ("0"+d.getDate()).slice(-2)+"/"+("0"+(d.getMonth()+1)).slice(-2) };
+}
+// Link de WhatsApp para avisar a barbearia sobre o novo agendamento
+function waNumero(tel){ let d=String(tel||"").replace(/\D/g,""); if(!d) return ""; if(d.length<=11) d="55"+d; return d; }
+function waAgendamento(){
+  const num = waNumero(S.shop && S.shop.tel);
+  if(!num || !S.service) return "";
+  const barbeiro = S.barber==="any" ? "Qualquer barbeiro" : ((barbers.find(x=>x.id===S.barber)||{}).nome||"Barbeiro");
+  const quando = (S.dia?labelDia(S.dia).top+" "+labelDia(S.dia).bot+" ":"") + "às " + hhmm(S.time);
+  const cli = S.payer||{};
+  const msg = `Novo agendamento na ${S.shop.nome}! ✂️\n`+
+    `Cliente: ${cli.nome||"-"}\n`+
+    (cli.zap?`WhatsApp: ${cli.zap}\n`:"")+
+    `Serviço: ${S.service.nome} (${fmt(S.service.preco)})\n`+
+    `Profissional: ${barbeiro}\n`+
+    `Quando: ${quando}`;
+  return `https://wa.me/${num}?text=${encodeURIComponent(msg)}`;
 }
 const faturamento = list => list.filter(a=>a.status==="pago").reduce((s,a)=>s+a.valor,0);
 const nCortes = list => list.filter(a=>a.status==="pago").length;
@@ -417,7 +434,9 @@ function renderClient(){
         h+=`<div class="daychip ${S.dia===k?'sel':''}" data-a="d:${k}"><span class="dc-top">${l.top}</span><span class="dc-bot">${l.bot}</span></div>`; });
       h+=`</div>`;
       const shor = (S.shop && S.shop.abre!=null) ? {abre:S.shop.abre, fecha:S.shop.fecha, almocoIni:S.shop.almocoIni, almocoFim:S.shop.almocoFim} : horario;
-      const slots = slotsLivres(S.barber, S.service.dur, 30, shor);
+      let minMin = 0;
+      if(S.dia===isoDia(new Date())){ const agora=new Date(); minMin = agora.getHours()*60 + agora.getMinutes(); }
+      const slots = slotsLivres(S.barber, S.service.dur, 30, shor, minMin);
       h+=`<div class="sllbl" style="margin:16px 0 8px">Escolha o horário</div><div class="slots">`;
       if(!slots.length) h+=`<div class="lr" style="grid-column:1/-1;justify-content:center;color:var(--mut)">Sem horários livres neste dia.</div>`;
       slots.forEach(m=> h+=`<div class="slot ${S.time===m?'sel':''}" data-a="t:${m}">${hhmm(m)}</div>`);
@@ -1249,10 +1268,13 @@ main.addEventListener("click", e=>{
   }
   else if(a==="pay"){
     const nomeCli = (S.payer&&S.payer.nome)||"Você";
-    appointments.push({ id:"new", barbeiro:S.barber==="any"?"b1":S.barber, cliente:nomeCli, service:S.service.id, min:S.time, valor:S.service.preco, status:"pago" });
+    appointments.push({ id:"new", barbeiro:S.barber==="any"?"b1":S.barber, cliente:nomeCli, service:S.service.id, min:S.time, dia:S.dia, valor:S.service.preco, status:"pago" });
     let c=(fidelidade[nomeCli]||0); c = (c%10===0 && c>0) ? 1 : c+1; fidelidade[nomeCli]=c;
     clearInterval(timerInt);
-    document.getElementById("paybox").innerHTML=`<div class="ok"><b>Pagamento confirmado</b><p>Seu horário está reservado. Após o corte, avalie o atendimento.</p></div><button class="btn" data-a="rate">Avaliar atendimento</button><button class="btn out" data-a="reset">Novo agendamento</button>`;
+    const wa = waAgendamento();
+    const waBtn = wa ? `<a class="btn" href="${wa}" target="_blank" rel="noopener" style="display:block;text-align:center;text-decoration:none;background:linear-gradient(135deg,#25d366,#1da851);color:#fff;border-color:#1da851;margin-top:14px">Avisar a barbearia no WhatsApp</a>` : "";
+    const extra = wa ? " Toque no botão verde para avisar a barbearia pelo WhatsApp." : "";
+    document.getElementById("paybox").innerHTML=`<div class="ok"><b>Pagamento confirmado</b><p>Seu horário está reservado.${extra} Após o corte, avalie o atendimento.</p></div>${waBtn}<button class="btn out" data-a="rate" style="margin-top:12px">Avaliar atendimento</button><button class="btn out" data-a="reset">Novo agendamento</button>`;
     return;
   }
   else if(a==="rate"){ S.step=5; S.stars=0; S.rated=false; }
@@ -1397,7 +1419,7 @@ async function hydrate(){
     if(rShops.error){ S.shopLoad="erro: "+(rShops.error.message||JSON.stringify(rShops.error)); }
     else { S.shopLoad = (rShops.data && rShops.data.length) ? "ok" : "vazio"; }
     if(rShops.data){
-      barbershops = rShops.data.map(s=>({ id:s.id, nome:s.nome, bairro:s.bairro||'', lat:s.lat, lng:s.lng,
+      barbershops = rShops.data.map(s=>({ id:s.id, nome:s.nome, bairro:s.bairro||'', lat:s.lat, lng:s.lng, tel:s.telefone||'',
         barbers: links.filter(l=>l.shop_id===s.id).map(l=>l.barber_id), slots:true, abre:s.abre, fecha:s.fecha, almocoIni:s.almoco_ini, almocoFim:s.almoco_fim, dias:s.dias }));
     }
     if(rBarbers.data && rBarbers.data.length){
