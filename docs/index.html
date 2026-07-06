@@ -829,9 +829,9 @@ function renderAccount(){
       } else if(!S.myShops.length){
         h += `<div class="lr" style="justify-content:center;color:var(--mut)">Você ainda não tem barbearia cadastrada.</div>`;
       } else S.myShops.forEach(function(sp){
-        const st = sp.ativo ? `<span class="chip ok">Ativa</span>` : `<span class="chip" style="background:rgba(255,159,10,.2);color:#a86400">Pendente</span>`;
+        const st = sp.ativo ? `<span class="chip ok">Ativa</span>` : `<span class="chip" style="background:rgba(255,159,10,.2);color:#a86400">Inativa</span>`;
         h += `<div class="box" style="margin-bottom:10px"><div style="display:flex;align-items:center;gap:10px"><div style="flex:1"><div class="nm" style="font-size:15px">${sp.nome||"(sem nome)"}</div><div class="sb">${sp.bairro||""}</div></div>${st}</div>
-          <div class="fidwrap" style="justify-content:flex-end;gap:8px;flex-wrap:wrap"><button class="btn out small" data-a="admBarb:${sp.id}:account">Equipe</button><button class="btn small" data-a="svcOpen:${sp.id}:account">Serviços e preços</button></div></div>`;
+          <div class="fidwrap" style="justify-content:flex-end;gap:8px;flex-wrap:wrap"><button class="btn out small" data-a="shopEdit:${sp.id}:account">Editar</button><button class="btn out small" data-a="admBarb:${sp.id}:account">Equipe</button><button class="btn small" data-a="svcOpen:${sp.id}:account">Serviços e preços</button></div></div>`;
       });
     } else {
       h += `<h1 class="bg">Sua conta</h1><div class="hint" style="margin-top:-6px;margin-bottom:14px">Acesse sua conta ou crie uma nova.</div>`;
@@ -1097,7 +1097,7 @@ function renderAdmin(){
     const st = sp.ativo ? `<span class="chip ok">Ativa</span>` : `<span class="chip" style="background:rgba(255,159,10,.2);color:#a86400">Pendente</span>`;
     const btn = sp.ativo ? `<button class="btn out small" data-a="admToggle:${sp.id}:0">Desativar</button>` : `<button class="btn small" data-a="admToggle:${sp.id}:1">Aprovar</button>`;
     h += `<div class="box" style="margin-bottom:10px"><div style="display:flex;align-items:center;gap:10px"><div style="flex:1"><div class="nm" style="font-size:15px">${sp.nome||"(sem nome)"}</div><div class="sb">${sp.responsavel||""}${sp.email?" · "+sp.email:""}</div><div class="sb">${sp.bairro||""} ${sp.cep||""}</div></div>${st}</div>
-      <div class="fidwrap" style="justify-content:flex-end;gap:8px;flex-wrap:wrap"><button class="btn out small" data-a="svcOpen:${sp.id}:admin">Serviços</button><button class="btn out small" data-a="admBarb:${sp.id}">Barbeiros</button><button class="btn out small" data-a="admEdit:${sp.id}">Editar</button>${btn}<button class="btn out small" data-a="admDel:${sp.id}" style="color:var(--cancel);border-color:rgba(255,59,48,.35)">Excluir</button></div></div>`;
+      <div class="fidwrap" style="justify-content:flex-end;gap:8px;flex-wrap:wrap"><button class="btn out small" data-a="svcOpen:${sp.id}:admin">Serviços</button><button class="btn out small" data-a="admBarb:${sp.id}">Barbeiros</button><button class="btn out small" data-a="shopEdit:${sp.id}:admin">Editar</button>${btn}<button class="btn out small" data-a="admDel:${sp.id}" style="color:var(--cancel);border-color:rgba(255,59,48,.35)">Excluir</button></div></div>`;
   });
   h += `<button class="btn out" data-a="account" style="margin-top:14px">Voltar</button>`;
   main.innerHTML = h;
@@ -1115,6 +1115,7 @@ async function admDelShop(id){
     err = r.error;
   }catch(e){ err=e; }
   if(err) opFail("Não foi possível excluir a barbearia.", err);
+  S.editShop=null;
   await admLoad();
 }
 
@@ -1342,8 +1343,40 @@ function renderAdminEdit(){
   h += `<div class="grid2">`+field("edAlmIni","Almoço início",{req:false,opts:HORAS_OPC,val:horaSel(sp.almoco_ini)})+field("edAlmFim","Almoço fim",{req:false,opts:HORAS_OPC,val:horaSel(sp.almoco_fim)})+`</div>`;
   h += `<button class="btn" data-a="admEditSave">Salvar alterações</button>`;
   h += demoBtn("admDemoEdit");
+  // Situação da barbearia (desativar / reativar / excluir)
+  h += `<div class="sllbl" style="margin:18px 0 8px">Situação</div>`;
+  if(sp.ativo){
+    h += `<button class="btn out" data-a="shopDeact:${sp.id}" style="color:var(--cancel);border-color:rgba(255,59,48,.35)">Desativar barbearia</button>`;
+    h += `<div class="hint" style="margin-top:8px">Ao desativar, a barbearia deixa de aparecer para os clientes, mas os dados ficam guardados. ${isAdmin()?"":"Só o administrador pode reativar depois."}</div>`;
+  } else {
+    if(isAdmin()) h += `<button class="btn out" data-a="shopReact:${sp.id}">Reativar barbearia</button>`;
+    else h += `<div class="hint">Esta barbearia está desativada. Somente o administrador pode reativá-la ou excluí-la.</div>`;
+  }
+  if(isAdmin()) h += `<button class="btn out" data-a="shopDel:${sp.id}" style="color:var(--cancel);border-color:rgba(255,59,48,.35);margin-top:10px">Excluir permanentemente</button>`;
   h += `<button class="btn out" data-a="admEditBack" style="margin-top:10px">Voltar</button>`;
   main.innerHTML = h;
+}
+// abre o editor de barbearia (dono via conta ou admin via painel)
+async function openShopEdit(id, ctx){
+  S.editBack = ctx || "admin";
+  let sp = (S.adminShops||[]).concat(S.myShops||[]).find(function(x){ return x.id===id; });
+  if(!sp){ try{ const { data } = await sb.from("shops").select("*").eq("id", id).single(); sp=data; }catch(e){} }
+  if(!sp) return;
+  S.editShop = JSON.parse(JSON.stringify(sp));
+  render();
+}
+function editExit(){
+  S.editShop=null;
+  if(S.editBack==="account"){ S.role="account"; S.accStage="home"; }
+  render();
+}
+async function shopSetAtivo(id, ativo){
+  let err=null;
+  try{ const r = await sb.from("shops").update({ ativo: !!ativo }).eq("id", id); err=r.error; }catch(e){ err=e; }
+  if(err){ opFail("Não foi possível atualizar a situação da barbearia.", err); return; }
+  S.editShop=null;
+  if(S.editBack==="account"){ S.myShops=undefined; S.role="account"; S.accStage="home"; render(); }
+  else { await admLoad(); }
 }
 function admEditRead(){
   const g=function(id){ const el=document.getElementById(id); return el?el.value:""; };
@@ -1370,7 +1403,8 @@ async function admEditSave(){
   }catch(e){ err=e; }
   if(err){ const msg=opFail("Não foi possível salvar as alterações.", err); const el=document.getElementById("editerr"); if(el){ el.innerHTML=`<div class="errmsg">${msg}</div>`; el.scrollIntoView({block:"center"}); } return; }
   S.editShop=null;
-  await admLoad();
+  if(S.editBack==="account"){ S.myShops=undefined; S.role="account"; S.accStage="home"; render(); }
+  else { await admLoad(); }
 }
 
 function render(){
@@ -1499,8 +1533,11 @@ main.addEventListener("click", e=>{
   else if(a==="beEspSave"){ beEspSave(); return; }
   else if(a==="beEspCancel"){ S.espEdit=null; S.beEspDraft=""; render(); return; }
   else if(a==="admEditSave"){ admEditSave(); return; }
-  else if(a==="admEditBack"){ S.editShop=null; render(); return; }
-  else if(a.startsWith("admEdit:")){ const sp=(S.adminShops||[]).find(function(x){ return x.id===a.slice(8); }); if(sp){ S.editShop=JSON.parse(JSON.stringify(sp)); render(); } return; }
+  else if(a==="admEditBack"){ editExit(); return; }
+  else if(a.startsWith("shopEdit:")){ const p=a.split(":"); openShopEdit(p[1], p[2]||"admin"); return; }
+  else if(a.startsWith("shopDeact:")){ admEditRead(); shopSetAtivo(a.slice(10), false); return; }
+  else if(a.startsWith("shopReact:")){ shopSetAtivo(a.slice(10), true); return; }
+  else if(a.startsWith("shopDel:")){ admDelShop(a.slice(8)); return; }
   else if(a.startsWith("admDia:")){ admEditRead(); const k=a.slice(7); const sp=S.editShop; if(sp){ if(!sp.dias) sp.dias=[]; const ix=sp.dias.indexOf(k); if(ix>=0) sp.dias.splice(ix,1); else sp.dias.push(k); render(); } return; }
   else if(a==="geo"){ acharMaisProxima(); return; }
   else if(a==="reload"){ hydrate(); return; }
