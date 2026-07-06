@@ -70,6 +70,13 @@
   .pr{ margin-left:auto; font-size:17px; font-weight:700; font-variant-numeric:tabular-nums; }
   .ar{ margin-left:auto; font-size:20px; opacity:.4; }
   .tile.sel .ar{ opacity:1; }
+  .dayrow{ display:flex; gap:8px; overflow-x:auto; padding:2px 2px 8px; -webkit-overflow-scrolling:touch; }
+  .daychip{ flex:0 0 auto; min-width:66px; text-align:center; padding:11px 10px; border-radius:16px; cursor:pointer;
+    background:rgba(255,255,255,.55); border:1px solid rgba(255,255,255,.7); transition:.12s; display:flex; flex-direction:column; gap:3px; }
+  .daychip:active{ transform:scale(.95); }
+  .daychip.sel{ background:var(--accent); color:#fff; border-color:var(--gold); box-shadow:0 6px 16px rgba(0,0,0,.30); }
+  .dc-top{ font-size:13px; font-weight:700; text-transform:capitalize; }
+  .dc-bot{ font-size:12px; opacity:.75; font-variant-numeric:tabular-nums; }
   .slots{ display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
   .slot{ text-align:center; padding:15px 0; font-size:16px; font-weight:600; font-variant-numeric:tabular-nums; cursor:pointer;
     background:rgba(255,255,255,.55); border:1px solid rgba(255,255,255,.7); border-radius:16px; transition:.12s; }
@@ -325,6 +332,27 @@ function slotsLivres(barbeiroId, dur, passo, hor){
   }
   return out;
 }
+// ----- Dias de atendimento (passo 3) -----
+const DIAS_SEM = ["dom","seg","ter","qua","qui","sex","sab"];        // índice = Date.getDay()
+const DIAS_ABBR = ["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
+function isoDia(d){ return d.getFullYear()+"-"+("0"+(d.getMonth()+1)).slice(-2)+"-"+("0"+d.getDate()).slice(-2); }
+function proximosDias(shop, janela, max){
+  const abertos = (shop && shop.dias && shop.dias.length) ? shop.dias : DIAS_SEM;
+  const base = new Date(); base.setHours(0,0,0,0);
+  const out=[];
+  for(let i=0; i<janela && out.length<(max||10); i++){
+    const d = new Date(base); d.setDate(base.getDate()+i);
+    if(abertos.indexOf(DIAS_SEM[d.getDay()])>=0) out.push(d);
+  }
+  return out;
+}
+function labelDia(iso){
+  const d = new Date(iso+"T00:00:00");
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  const diff = Math.round((d-hoje)/86400000);
+  const top = diff===0 ? "Hoje" : diff===1 ? "Amanhã" : DIAS_ABBR[d.getDay()];
+  return { top: top, bot: ("0"+d.getDate()).slice(-2)+"/"+("0"+(d.getMonth()+1)).slice(-2) };
+}
 const faturamento = list => list.filter(a=>a.status==="pago").reduce((s,a)=>s+a.valor,0);
 const nCortes = list => list.filter(a=>a.status==="pago").length;
 const comissao = (list,pct) => faturamento(list)*pct;
@@ -377,12 +405,25 @@ function renderClient(){
     svcList.forEach(s=> h+=`<div class="tile ${S.service&&S.service.id===s.id?'sel':''}" data-a="s:${s.id}"><div class="ic">${icc[s.cat]||ICONS.scissors}</div><div><div class="nm">${s.nome}</div><div class="sb">${s.dur} minutos</div></div><div class="pr">${fmt(s.preco)}</div></div>`);
   }
   if(S.step===3){
-    const shor = (S.shop && S.shop.abre!=null) ? {abre:S.shop.abre, fecha:S.shop.fecha, almocoIni:S.shop.almocoIni, almocoFim:S.shop.almocoFim} : horario;
-    const slots = slotsLivres(S.barber, S.service.dur, 30, shor);
-    h+=`<div class="eyebrow">Passo 3 de 4</div><h1>Quando te espero?</h1><div class="slots">`;
-    slots.forEach(m=> h+=`<div class="slot ${S.time===m?'sel':''}" data-a="t:${m}">${hhmm(m)}</div>`);
-    h+=`</div><div class="hint">Hoje · ${S.service.nome} (${S.service.dur} min). Almoço e horários ocupados já removidos.</div>`;
-    if(S.time!==null) h+=`<button class="btn" data-a="next">Confirmar e pagar</button>`;
+    h+=`<div class="eyebrow">Passo 3 de 4</div><h1>Quando te espero?</h1>`;
+    const dias = proximosDias(S.shop, 21, 10);
+    if(!dias.length){
+      h+=`<div class="lr" style="justify-content:center;color:var(--mut);text-align:center">Esta barbearia ainda não definiu os dias de atendimento.</div>`;
+    } else {
+      // dia selecionado por padrão = primeiro disponível
+      if(!S.dia || !dias.some(function(d){ return isoDia(d)===S.dia; })) S.dia = isoDia(dias[0]);
+      h+=`<div class="sllbl" style="margin:2px 0 8px">Escolha o dia</div><div class="dayrow">`;
+      dias.forEach(function(d){ const k=isoDia(d); const l=labelDia(k);
+        h+=`<div class="daychip ${S.dia===k?'sel':''}" data-a="d:${k}"><span class="dc-top">${l.top}</span><span class="dc-bot">${l.bot}</span></div>`; });
+      h+=`</div>`;
+      const shor = (S.shop && S.shop.abre!=null) ? {abre:S.shop.abre, fecha:S.shop.fecha, almocoIni:S.shop.almocoIni, almocoFim:S.shop.almocoFim} : horario;
+      const slots = slotsLivres(S.barber, S.service.dur, 30, shor);
+      h+=`<div class="sllbl" style="margin:16px 0 8px">Escolha o horário</div><div class="slots">`;
+      if(!slots.length) h+=`<div class="lr" style="grid-column:1/-1;justify-content:center;color:var(--mut)">Sem horários livres neste dia.</div>`;
+      slots.forEach(m=> h+=`<div class="slot ${S.time===m?'sel':''}" data-a="t:${m}">${hhmm(m)}</div>`);
+      h+=`</div><div class="hint">${labelDia(S.dia).top} · ${S.service.nome} (${S.service.dur} min). Almoço e horários ocupados já removidos.</div>`;
+      if(S.time!==null) h+=`<button class="btn" data-a="next">Confirmar e pagar</button>`;
+    }
   }
   if(S.step===4 && !S.pixGen){
     const b = S.barber==="any"?"Qualquer barbeiro":barbers.find(x=>x.id===S.barber).nome;
@@ -395,7 +436,7 @@ function renderClient(){
         field("pgCpf","CPF",{ph:"Somente números",val:pd.cpf||""})+
         field("pgZap","WhatsApp",{ph:"(11) 99999-9999",val:pd.zap||""})+
         `</div>`;
-    h+=`<div class="lr" style="margin-top:6px"><span class="c">${b} · ${S.service.nome} · ${hhmm(S.time)}</span><b>${fmt(S.service.preco)}</b></div>`;
+    h+=`<div class="lr" style="margin-top:6px"><span class="c">${b} · ${S.service.nome} · ${S.dia?labelDia(S.dia).top+" "+labelDia(S.dia).bot+" · ":""}${hhmm(S.time)}</span><b>${fmt(S.service.preco)}</b></div>`;
     h+=`<button class="btn" data-a="genpix">Gerar PIX</button>`;
     h+=demoBtn("fillpay");
   }
@@ -1191,7 +1232,8 @@ main.addEventListener("click", e=>{
   const t=e.target.closest("[data-a]"); if(!t) return;
   const a=t.dataset.a;
   if(a.startsWith("b:")){ S.barber=a.slice(2); S.step=2; }
-  else if(a.startsWith("s:")){ S.service=services.find(s=>s.id===a.slice(2)); S.time=null; S.step=3; }
+  else if(a.startsWith("s:")){ S.service=services.find(s=>s.id===a.slice(2)); S.time=null; S.dia=null; S.step=3; }
+  else if(a.startsWith("d:")){ S.dia=a.slice(2); S.time=null; }
   else if(a.startsWith("t:")){ S.time=+a.slice(2); }
   else if(a==="next"){ S.step=4; S.pixGen=false; }
   else if(a==="genpix"){
@@ -1219,7 +1261,7 @@ main.addEventListener("click", e=>{
     if(!S.stars){ document.querySelector(".ratelabel").innerHTML='<span style="color:var(--cancel)">Escolha de 1 a 5 estrelas</span>'; return; }
     S.rated=true; render(); return;
   }
-  else if(a==="reset"){ S.step=1; S.barber=null; S.service=null; S.time=null; S.pixGen=false; S.payer=null; S.stars=0; S.rated=false; }
+  else if(a==="reset"){ S.step=1; S.barber=null; S.service=null; S.time=null; S.dia=null; S.pixGen=false; S.payer=null; S.stars=0; S.rated=false; }
   else if(a==="save"){ saveOnboarding(); return; }
   else if(a==="obNext"){ obReadStep(); if(!obValidStep()) return; if(S.obStep<5){ S.obStep++; render(); } else { saveOnboarding(); } return; }
   else if(a==="obBack"){ obReadStep(); S.obStep--; render(); return; }
@@ -1315,7 +1357,7 @@ userBtn.addEventListener("click", e=>{ e.stopPropagation(); toggleMenu(); });
 function goHome(){
   toggleMenu(false);
   S.svcShop=null; S.svcList=null; S.barbShop=null; S.barbLinks=null; S.espEdit=null; S.editShop=null;
-  S.role="client"; S.step=1; S.shop=null; S.barber=null; S.service=null; S.time=null;
+  S.role="client"; S.step=1; S.shop=null; S.barber=null; S.service=null; S.time=null; S.dia=null;
   S.pixGen=false; S.payer=null; S.stars=0; S.rated=false;
   hydrate();
 }
