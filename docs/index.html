@@ -807,7 +807,7 @@ function renderAccount(){
       } else S.myShops.forEach(function(sp){
         const st = sp.ativo ? `<span class="chip ok">Ativa</span>` : `<span class="chip" style="background:rgba(255,159,10,.2);color:#a86400">Inativa</span>`;
         h += `<div class="box" style="margin-bottom:10px"><div style="display:flex;align-items:center;gap:10px"><div style="flex:1"><div class="nm" style="font-size:15px">${sp.nome||"(sem nome)"}</div><div class="sb">${sp.bairro||""}</div></div>${st}</div>
-          <div class="fidwrap" style="justify-content:flex-end;gap:8px;flex-wrap:wrap"><button class="btn out small" data-a="shopEdit:${sp.id}:account">Editar</button><button class="btn out small" data-a="admBarb:${sp.id}:account">Equipe</button><button class="btn small" data-a="svcOpen:${sp.id}:account">Serviços e preços</button></div></div>`;
+          <div class="fidwrap" style="justify-content:flex-end;gap:8px;flex-wrap:wrap"><button class="btn small" data-a="dash:${sp.id}">Painel da barbearia</button><button class="btn out small" data-a="shopEdit:${sp.id}:account">Editar</button><button class="btn out small" data-a="admBarb:${sp.id}:account">Equipe</button><button class="btn out small" data-a="svcOpen:${sp.id}:account">Serviços</button></div></div>`;
       });
     } else {
       h += `<h1 class="bg">Sua conta</h1><div class="hint" style="margin-top:-6px;margin-bottom:14px">Acesse sua conta ou crie uma nova.</div>`;
@@ -936,7 +936,7 @@ function renderBarber(){
       <div class="kpi"><span class="l">Faturado</span><span class="v">${fmt(faturamento(list))}</span></div>
       <div class="kpi"><span class="l">Comissão 40%</span><span class="v">${fmt(comissao(list,.4))}</span></div>
     </div><div class="eyebrow" style="margin:22px 0 10px">Mais vendidos</div>`;
-    const cnt={}; list.filter(a=>a.status==="pago").forEach(a=>{const n=services.find(s=>s.id===a.service).nome; cnt[n]=(cnt[n]||0)+1;});
+    const cnt={}; list.filter(a=>a.status==="pago").forEach(a=>{const svc=services.find(s=>s.id===a.service); const n=svc?svc.nome:"Serviço"; cnt[n]=(cnt[n]||0)+1;});
     Object.entries(cnt).sort((a,b)=>b[1]-a[1]).forEach(([n,c])=> h+=`<div class="lr"><span>${n}</span><span class="c">${c}x</span></div>`);
 
     h+=`<div class="eyebrow" style="margin:22px 0 10px">Política de faltas</div>
@@ -956,7 +956,7 @@ function renderBarber(){
     const bg={pago:"rgba(52,199,89,.18)",aguardando:"rgba(255,159,10,.2)",cancelado:"rgba(255,69,58,.18)"};
     const fg={pago:"#1f8f3e",aguardando:"#a86400",cancelado:"#c0271f"};
     list.slice().sort((a,b)=>a.min-b.min).forEach(a=>{
-      const s=services.find(x=>x.id===a.service);
+      const s=services.find(x=>x.id===a.service) || {nome:"Serviço"};
       const cortes = fidelidade[a.cliente]||0;
       const free = cortes>0 && cortes%10===0;
       const filled = free ? 10 : cortes%10;
@@ -1149,6 +1149,16 @@ async function loadMyShops(){
   try{ const { data } = await sb.from("shops").select("*").eq("owner_id", uid).order("criado_em",{ascending:false}); S.myShops=data||[]; }catch(e){ S.myShops=[]; }
   S.myShopsLoading=false;
   if(S.role==="account") render();
+}
+// abre o painel/dashboard da barbearia (agenda, ganhos, metas, comissões, equipe)
+async function openDash(shopId){
+  let sp = (S.myShops||[]).concat(S.adminShops||[]).find(function(x){ return x.id===shopId; });
+  if(!sp){ try{ const { data } = await sb.from("shops").select("*").eq("id", shopId).single(); sp=data; }catch(e){} }
+  if(!sp) return;
+  S.dashShop = sp;
+  profile = Object.assign({}, profile||{}, { nomeFantasia: sp.nome, tipo:"dono", respNome: sp.responsavel||"", mobilePhone: sp.telefone||"" });
+  S.role="barber"; S.tab="dash";
+  render();
 }
 
 /* ---------- Equipe da barbearia (admin e dono) ---------- */
@@ -1469,6 +1479,7 @@ main.addEventListener("click", e=>{
   else if(a==="toDash"){ S.role="barber"; S.tab="dash"; }
   else if(a==="toClient"){ S.role="client"; S.step=1; S.shop=null; hydrate(); }
   else if(a==="toMinhaConta"){ S.role="account"; S.accStage="home"; S.myShops=undefined; render(); return; }
+  else if(a.startsWith("dash:")){ openDash(a.slice(5)); return; }
   else if(a==="accLogin"){ S.accStage="login"; render(); return; }
   else if(a==="accSignup"){ S.accStage="signup"; render(); return; }
   else if(a==="accHome"){ S.accStage="home"; render(); return; }
