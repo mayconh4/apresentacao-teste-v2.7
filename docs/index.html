@@ -659,7 +659,7 @@ function renderClient(){
 function confirmarPagamento(){
   if(S.paid) return;
   S.paid=true;
-  clearInterval(pixPoll);
+  clearInterval(pixPoll); clearPixPending(); S.pixCreated=null;
   const nomeCli = (S.payer&&S.payer.nome)||"Você";
   const pvPay = precoCliente();
   appointments.push({ id:"new", barbeiro:S.barber==="any"?"b1":S.barber, cliente:nomeCli, service:S.service.id, min:S.time, dia:S.dia, valor:pvPay.final, status:"pago" });
@@ -702,11 +702,37 @@ function startPixPoll(){
     }catch(e){}
   }, 4000);
 }
+// PIX pendente: sobrevive ao fechamento do navegador até expirar (5 min)
+const PIX_TTL = 300; // segundos
+function savePixPending(){
+  try{ localStorage.setItem("sb_pix_pend", JSON.stringify({
+    pixData:S.pixData||null, payer:S.payer, serviceId:S.service&&S.service.id,
+    shopId:S.shop&&S.shop.id, barber:S.barber, dia:S.dia, time:S.time, created:S.pixCreated||Date.now()
+  })); }catch(e){}
+}
+function clearPixPending(){ try{ localStorage.removeItem("sb_pix_pend"); }catch(e){} }
+let _pixRestored=false;
+function restorePixPending(){
+  if(_pixRestored) return; _pixRestored=true;
+  let p=null; try{ p=JSON.parse(localStorage.getItem("sb_pix_pend")||"null"); }catch(e){}
+  if(!p || !p.created) return;
+  const left = PIX_TTL - Math.floor((Date.now()-p.created)/1000);
+  if(left<=0){ clearPixPending(); return; }
+  const svc = services.find(function(x){ return x.id===p.serviceId; });
+  const shp = barbershops.find(function(x){ return x.id===p.shopId; });
+  if(!svc || !shp){ clearPixPending(); return; }
+  S.role="client"; S.shop=shp; S.service=svc; S.barber=p.barber; S.dia=p.dia; S.time=p.time; S.payer=p.payer;
+  S.step=4; S.pixGen=true; S.paid=false; S.pixTried=true; S.pixData=p.pixData; S.pixCreated=p.created;
+  render(); startPixPoll();
+}
 let timerInt;
 function startTimer(){
-  clearInterval(timerInt); let t=300; const el=document.getElementById("timer");
-  timerInt=setInterval(()=>{ t--; if(t<=0){clearInterval(timerInt); if(el)el.textContent="00:00";return;}
-    if(el) el.textContent=String(Math.floor(t/60)).padStart(2,"0")+":"+String(t%60).padStart(2,"0"); },1000);
+  clearInterval(timerInt);
+  let t = S.pixCreated ? Math.max(0, PIX_TTL - Math.floor((Date.now()-S.pixCreated)/1000)) : PIX_TTL;
+  const el=document.getElementById("timer");
+  const tick=()=>{ if(el) el.textContent=String(Math.floor(t/60)).padStart(2,"0")+":"+String(t%60).padStart(2,"0"); };
+  tick();
+  timerInt=setInterval(()=>{ t--; if(t<=0){clearInterval(timerInt); if(el)el.textContent="00:00"; clearPixPending(); return;} tick(); },1000);
 }
 
 /* ---------- Tipo de profissional ---------- */
@@ -1857,7 +1883,7 @@ main.addEventListener("click", e=>{
     let bad=null; [nome,cpf,zap].forEach(el=>{ if(!el.value.trim()){ el.classList.add("err"); if(!bad)bad=el; } else el.classList.remove("err"); });
     if(bad){ document.getElementById("payerr").innerHTML=`<div class="errmsg">Preencha nome, CPF e WhatsApp.</div>`; bad.focus(); return; }
     S.payer={ nome:nome.value.trim(), cpf:cpf.value.trim(), zap:zap.value.trim() };
-    S.pixGen=true; S.paid=false; S.pixData=null; S.pixTried=false; S.aguardandoPix=false; clearInterval(pixPoll); render(); createPixReal(); return;
+    S.pixGen=true; S.paid=false; S.pixData=null; S.pixTried=false; S.aguardandoPix=false; S.pixCreated=Date.now(); clearInterval(pixPoll); savePixPending(); render(); createPixReal(); return;
   }
   else if(a==="fillpay"){
     S.payer={ nome:"Maycon Souza", cpf:"123.456.789-00", zap:"(11) 98888-7777" };
@@ -1871,7 +1897,7 @@ main.addEventListener("click", e=>{
     if(!S.stars){ document.querySelector(".ratelabel").innerHTML='<span style="color:var(--cancel)">Escolha de 1 a 5 estrelas</span>'; return; }
     S.rated=true; render(); return;
   }
-  else if(a==="reset"){ clearInterval(pixPoll); S.step=1; S.barber=null; S.service=null; S.time=null; S.dia=null; S.pixGen=false; S.paid=false; S.payer=null; S.stars=0; S.rated=false; S.aguardandoPix=false; }
+  else if(a==="reset"){ clearInterval(pixPoll); clearPixPending(); S.pixCreated=null; S.step=1; S.barber=null; S.service=null; S.time=null; S.dia=null; S.pixGen=false; S.paid=false; S.payer=null; S.stars=0; S.rated=false; S.aguardandoPix=false; }
   else if(a==="save"){ saveOnboarding(); return; }
   else if(a==="obNext"){ obReadStep(); if(!obValidStep()) return; obGo(1); return; }
   else if(a==="obBack"){ obReadStep(); obGo(-1); return; }
@@ -2097,6 +2123,7 @@ async function hydrate(){
       services = rSvcs.data.map(s=>({ id:s.id, nome:s.nome, preco:Number(s.preco), dur:s.duracao_min, shop_id:s.shop_id, cat:s.categoria }));
     }
     console.log('SeuBarba: dados carregados do Supabase');
+    restorePixPending();
   }catch(e){
     S.shopLoad = "erro: " + ((e && e.message) ? e.message : e);
     console.log('SeuBarba: falha ao carregar dados do Supabase', e);
@@ -2113,7 +2140,7 @@ async function createPixReal(){
       body: JSON.stringify((function(){ const pv=precoCliente(); return { valor:pv.final, nome:S.payer.nome, cpf:S.payer.cpf, whatsapp:S.payer.zap, descricao:S.service.nome + (pv.pct?` (desconto ${pv.pct}%)`:"") }; })())
     });
     const d = await r.json();
-    if(d && d.qrImage){ S.pixData = { qrImage:d.qrImage, copiaECola:d.copiaECola, paymentId:d.paymentId }; startPixPoll(); }
+    if(d && d.qrImage){ S.pixData = { qrImage:d.qrImage, copiaECola:d.copiaECola, paymentId:d.paymentId }; savePixPending(); startPixPoll(); }
   }catch(e){ console.log("PIX: usando simulado (funcao indisponivel)", e); }
   S.pixTried = true;
   // não re-renderizar se o pagamento já foi confirmado (não apagar a tela de sucesso)
