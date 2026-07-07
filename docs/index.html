@@ -351,8 +351,23 @@ let profissionais = [
   { nome:"Rafa Lima", esp:["Social","Sobrancelha"], nota:4.8, dist:"5,5 km", invited:false },
 ];
 
-// desconto opcional no próximo corte, por cliente (agenda)
-let descontos = {};
+// desconto opcional no próximo corte, por cliente — persistido e aplicado
+// automaticamente no agendamento/PIX do cliente com o mesmo nome
+let descontos = (function(){ try{ return JSON.parse(localStorage.getItem("sb_descontos")||"{}"); }catch(e){ return {}; } })();
+function saveDescontos(){ try{ localStorage.setItem("sb_descontos", JSON.stringify(descontos)); }catch(e){} }
+function descDe(nome){
+  const alvo = String(nome||"").trim().toLowerCase(); if(!alvo) return 0;
+  const k = Object.keys(descontos).find(n=>n.trim().toLowerCase()===alvo);
+  return k ? (+descontos[k]||0) : 0;
+}
+function setDescCli(nome, v){ const p=Math.max(0,Math.min(90,+v||0)); if(p>0) descontos[nome]=p; else delete descontos[nome]; saveDescontos(); }
+// preço do serviço para o cliente atual, já com o desconto vinculado ao nome
+function precoCliente(){
+  const base = S.service ? S.service.preco : 0;
+  const nome = (S.payer && S.payer.nome) || getCName() || "";
+  const pct = descDe(nome);
+  return { base, pct, final: Math.round(base*(1-pct/100)*100)/100 };
+}
 // freelancers da barbearia (dono define a comissão de cada um)
 let team = [
   { nome:"Pedro Santos", comissao:40 },
@@ -551,7 +566,9 @@ function renderClient(){
         field("pgCpf","CPF",{ph:"Somente números",val:pd.cpf||""})+
         field("pgZap","WhatsApp",{ph:"(11) 99999-9999",val:pd.zap||""})+
         `</div>`;
-    h+=`<div class="lr" style="margin-top:6px"><span class="c">${b} · ${S.service.nome} · ${S.dia?labelDia(S.dia).top+" "+labelDia(S.dia).bot+" · ":""}${hhmm(S.time)}</span><b>${fmt(S.service.preco)}</b></div>`;
+    const pv = precoCliente();
+    h+=`<div class="lr" style="margin-top:6px"><span class="c">${b} · ${S.service.nome} · ${S.dia?labelDia(S.dia).top+" "+labelDia(S.dia).bot+" · ":""}${hhmm(S.time)}</span><b id="pgPreco">${pv.pct?`<s style="color:var(--mut);font-weight:400">${fmt(pv.base)}</s> ${fmt(pv.final)}`:fmt(pv.base)}</b></div>`;
+    h+=`<div class="hint" id="pgDescMsg" style="margin-top:4px;${pv.pct?'':'display:none'}">🎉 Você tem <b>${pv.pct}% de desconto</b> neste corte, cortesia da barbearia.</div>`;
     h+=`<button class="btn" data-a="genpix">Gerar PIX</button>`;
     h+=demoBtn("fillpay");
   }
@@ -575,8 +592,10 @@ function renderClient(){
   }
   if(S.step===4 && S.pixGen){
     const b = S.barber==="any"?"Qualquer barbeiro":barbers.find(x=>x.id===S.barber).nome;
+    const pv = precoCliente();
     h+=`<div class="center"><div class="eyebrow">Passo 4 de 4 · PIX</div>
-      <div class="amt">${fmt(S.service.preco)}</div>
+      <div class="amt">${pv.pct?`<s style="font-size:.55em;color:var(--mut);font-weight:400">${fmt(pv.base)}</s> `:""}${fmt(pv.final)}</div>
+      ${pv.pct?`<div class="hint" style="text-align:center;margin-top:-4px">${pv.pct}% de desconto aplicado</div>`:""}
       <div class="timer">expira em <span id="timer">05:00</span></div>
       ${S.pixData && S.pixData.qrImage
         ? `<div class="qrwrap"><img src="data:image/png;base64,${S.pixData.qrImage}" style="width:100%;height:100%;object-fit:contain" alt="QR PIX"></div>
@@ -585,7 +604,7 @@ function renderClient(){
         : (S.pixTried
           ? `<div class="qrwrap"><div class="qr">${qr()}</div></div>
       <div class="lbl">PIX copia e cola (simulado)</div>
-      <div class="copy">00020126BR.GOV.BCB.PIX5204000053039865402${S.service.preco.toFixed(2)}5802BR6009SEUBARBA6304</div>`
+      <div class="copy">00020126BR.GOV.BCB.PIX5204000053039865402${pv.final.toFixed(2)}5802BR6009SEUBARBA6304</div>`
           : `<div class="hint" style="text-align:center;padding:44px 0">Gerando PIX...</div>`)}
       <div class="hint" style="text-align:center">${S.payer.nome} · ${b} · ${S.service.nome} · ${hhmm(S.time)}</div>
       <div id="paybox"><button class="btn" data-a="pay">Já paguei</button></div>
@@ -627,6 +646,14 @@ function brDateToISO(v){
   return m ? m[3]+"-"+m[2]+"-"+m[1] : null;
 }
 // Máscara automática dd/mm/aaaa: insere as barras conforme os números são digitados
+// ao digitar o nome no pagamento, aplica na hora o desconto vinculado ao cliente
+document.addEventListener("input", function(e){
+  if(!e.target || e.target.id!=="pgNome" || !S.service) return;
+  const pct = descDe(e.target.value), base = S.service.preco;
+  const el = document.getElementById("pgPreco"), msg = document.getElementById("pgDescMsg");
+  if(el) el.innerHTML = pct ? `<s style="color:var(--mut);font-weight:400">${fmt(base)}</s> ${fmt(Math.round(base*(1-pct/100)*100)/100)}` : fmt(base);
+  if(msg){ msg.style.display = pct ? "" : "none"; if(pct) msg.innerHTML = `🎉 Você tem <b>${pct}% de desconto</b> neste corte, cortesia da barbearia.`; }
+});
 document.addEventListener("input", function(e){
   if(!e.target || e.target.id!=="birthDate") return;
   const d = e.target.value.replace(/\D/g,"").slice(0,8);
@@ -1145,8 +1172,12 @@ function renderBarber(){
       const flbl = free ? `<span class="fidlbl free">${giftSm}Próximo grátis</span>` : `<span class="fidlbl">${filled}/10</span>`;
       const waMsg = encodeURIComponent(`Olá ${a.cliente}! Aqui é da ${profile?(profile.nomeFantasia||"barbearia"):"barbearia"} 💈 Sobre seu horário de ${hhmm(a.min)} hoje.`);
       const waBtn = a.zap? `<a class="wabtn" href="https://wa.me/55${a.zap}?text=${waMsg}" target="_blank" rel="noopener"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-8.6 15l-1.3 4.7 4.8-1.3A10 10 0 1 0 12 2zm5.9 14.3c-.2.7-1.4 1.3-2 1.4-.5.1-1.2.1-1.9-.1-.4-.1-1-.3-1.7-.6-3-1.3-4.9-4.3-5-4.5-.2-.2-1.2-1.6-1.2-3s.7-2.1 1-2.4c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.5l.8 2c.1.1.1.3 0 .5l-.4.5-.3.3c-.2.2-.3.4-.2.6.2.4.8 1.3 1.6 2 .9.9 1.7 1.1 2 1.3.2.1.4.1.6-.1l.7-.9c.2-.2.4-.2.6-.1l1.9.9c.3.1.4.2.5.3.1.2.1.7-.1 1.3z"/></svg>WhatsApp</a>` : "";
-      const descOn = !!descontos[a.cliente];
-      const descBtn = `<button class="btn ${descOn?'':'out'} small" data-a="descTg:${a.cliente}" style="margin:0">${descOn?'✓ Desconto '+noShowDiscount+'% próx. corte':'Dar desconto próx. corte'}</button>`;
+      const descPct = +descontos[a.cliente]||0;
+      const descBtn = descPct
+        ? `<span class="slval" style="display:flex;align-items:center;gap:5px;font-size:13px">Desconto próx. corte
+             <input type="number" min="0" max="90" step="5" value="${descPct}" oninput="setDescCli('${a.cliente}',this.value)" style="width:58px;text-align:right">%
+           </span><button class="btn out small" data-a="descTg:${a.cliente}" style="margin:0">Remover</button>`
+        : `<button class="btn out small" data-a="descTg:${a.cliente}" style="margin:0">Dar desconto próx. corte</button>`;
       h+=`<div class="ag" style="flex-direction:column;align-items:stretch;gap:11px">
         <div style="display:flex;align-items:center;gap:14px">
           <div class="hm">${hhmm(a.min)}</div>
@@ -1705,7 +1736,10 @@ main.addEventListener("click", e=>{
   else if(a==="pay"){
     S.paid=true;
     const nomeCli = (S.payer&&S.payer.nome)||"Você";
-    appointments.push({ id:"new", barbeiro:S.barber==="any"?"b1":S.barber, cliente:nomeCli, service:S.service.id, min:S.time, dia:S.dia, valor:S.service.preco, status:"pago" });
+    const pvPay = precoCliente();
+    appointments.push({ id:"new", barbeiro:S.barber==="any"?"b1":S.barber, cliente:nomeCli, service:S.service.id, min:S.time, dia:S.dia, valor:pvPay.final, status:"pago" });
+    // o desconto vale para um corte: consumido após o pagamento
+    if(pvPay.pct){ const alvo=nomeCli.trim().toLowerCase(); Object.keys(descontos).forEach(n=>{ if(n.trim().toLowerCase()===alvo) delete descontos[n]; }); saveDescontos(); }
     let c=(fidelidade[nomeCli]||0); c = (c%10===0 && c>0) ? 1 : c+1; fidelidade[nomeCli]=c;
     clearInterval(timerInt);
     const wa = waAgendamento();
@@ -1789,7 +1823,7 @@ main.addEventListener("click", e=>{
   else if(a==="planoEdit"){ S.planoEdit=true; render(); return; }
   else if(a==="planoSave"){ const i=document.getElementById("planoVal"); lsSet("sb_plano", i&&+i.value>0 ? String(+i.value) : ""); S.planoEdit=false; render(); return; }
   else if(a==="planoDel"){ lsSet("sb_plano", null); S.planoEdit=false; render(); return; }
-  else if(a.startsWith("descTg:")){ const c=a.slice(7); if(descontos[c]) delete descontos[c]; else descontos[c]=noShowDiscount||10; render(); return; }
+  else if(a.startsWith("descTg:")){ const c=a.slice(7); if(descontos[c]) delete descontos[c]; else descontos[c]=noShowDiscount||10; saveDescontos(); render(); return; }
   else if(a.startsWith("fpsvc:")){ const key=a.slice(6); const fp=profile||loadFreela()||{}; if(!fp.svc) fp.svc={}; if(fp.svc[key]) delete fp.svc[key]; else { const c=CATALOGO.find(x=>x.key===key); if(c) fp.svc[key]={dur:c.dur}; } profile=fp; render(); return; }
   else if(a==="freelaPanel"){ if(!profile) profile=loadFreela(); S.role="barber"; S.tab="rede"; render(); return; }
   else if(a==="expandir"){ S.barberType="dono"; S.role="onboarding"; S.obStep=null; S.obDraft=null; render(); return; }
@@ -1957,7 +1991,7 @@ async function createPixReal(){
     const r = await fetch(FN_PIX, {
       method:"POST",
       headers:{ "Content-Type":"application/json", "apikey": SB_KEY, "Authorization":"Bearer "+SB_KEY },
-      body: JSON.stringify({ valor:S.service.preco, nome:S.payer.nome, cpf:S.payer.cpf, whatsapp:S.payer.zap, descricao:S.service.nome })
+      body: JSON.stringify((function(){ const pv=precoCliente(); return { valor:pv.final, nome:S.payer.nome, cpf:S.payer.cpf, whatsapp:S.payer.zap, descricao:S.service.nome + (pv.pct?` (desconto ${pv.pct}%)`:"") }; })())
     });
     const d = await r.json();
     if(d && d.qrImage){ S.pixData = { qrImage:d.qrImage, copiaECola:d.copiaECola, paymentId:d.paymentId }; }
