@@ -19,10 +19,14 @@ Deno.serve(async (req) => {
     const busca = await (await fetch(`${ASAAS_URL}/customers?cpfCnpj=${doc}`, { headers: h })).json();
     let customerId = busca.data?.[0]?.id;
     if (!customerId) {
-      const novo = await (await fetch(`${ASAAS_URL}/customers`, {
+      const fone = String(whatsapp || "").replace(/\D/g, "");
+      const criar = (comFone: boolean) => fetch(`${ASAAS_URL}/customers`, {
         method: "POST", headers: h,
-        body: JSON.stringify({ name: nome, cpfCnpj: doc, mobilePhone: String(whatsapp || "").replace(/\D/g, "") }),
-      })).json();
+        body: JSON.stringify({ name: nome, cpfCnpj: doc, ...(comFone && fone ? { mobilePhone: fone } : {}) }),
+      }).then((r) => r.json());
+      let novo = await criar(true);
+      // telefone rejeitado pelo Asaas? cria sem telefone em vez de travar a venda
+      if (!novo.id && JSON.stringify(novo.errors || "").includes("mobilePhone")) novo = await criar(false);
       if (!novo.id) throw new Error(JSON.stringify(novo.errors || novo));
       customerId = novo.id;
     }
