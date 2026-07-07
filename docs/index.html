@@ -358,41 +358,102 @@ function pAvatar(p, size){
 function fotoBtn(scope){
   return `<label class="btn out small" style="margin:0;cursor:pointer">${getAvatar(scope)?'Trocar foto':'Adicionar foto'}<input type="file" accept="image/*" data-av="${scope}" style="display:none"></label>`;
 }
-// redimensiona a imagem escolhida para 96px e salva
+// aplica a foto recortada conforme o contexto (perfil, studio, editor)
+function applyAvatar(scope, data){
+  try{ localStorage.setItem(avatarKey(scope), data); }catch(err){}
+  // editor da barbearia (admin/dono): grava a foto direto no banco daquela loja
+  if(scope==="shopedit" && S.editShop){
+    const sid = S.editShop.id;
+    S.editShop.foto = data;
+    setShopFoto(sid, data);
+    try{ sb.from("shops").update({ foto:data }).eq("id", sid).then(function(r){ if(r&&r.error) console.log("foto no banco:", r.error.message); }); }catch(err){}
+    admEditRead(); render(); return;
+  }
+  // foto do studio também fica visível para o cliente no fluxo de agendamento
+  if(scope==="studio" && S.dashShop){
+    setShopFoto(S.dashShop.id, data);
+    try{ sb.from("shops").update({ foto:data }).eq("id", S.dashShop.id).then(function(r){ if(r&&r.error) console.log("foto no banco:", r.error.message); }); }catch(err){}
+  }
+  // no cadastro, preserva o que já foi digitado antes de redesenhar
+  if(S.role==="onboarding") obReadStep();
+  render();
+}
+
+/* ---------- Mini ajuste de foto: arrastar para centralizar + zoom ---------- */
+let _crop=null;
 document.addEventListener("change", function(e){
   const inp = e.target; if(!inp || !inp.dataset || !inp.dataset.av || !inp.files || !inp.files[0]) return;
   const scope = inp.dataset.av, f = inp.files[0];
   const img = new Image();
-  img.onload = function(){
-    const c = document.createElement("canvas"); const s = 96;
-    c.width = s; c.height = s;
-    const r = Math.max(s/img.width, s/img.height);
-    const w = img.width*r, h2 = img.height*r;
-    c.getContext("2d").drawImage(img, (s-w)/2, (s-h2)/2, w, h2);
-    const data = c.toDataURL("image/jpeg", .82);
-    try{ localStorage.setItem(avatarKey(scope), data); }catch(err){}
-    // editor da barbearia (admin/dono): grava a foto direto no banco daquela loja
-    if(scope==="shopedit" && S.editShop){
-      const sid = S.editShop.id;
-      S.editShop.foto = data;
-      setShopFoto(sid, data);
-      try{ sb.from("shops").update({ foto:data }).eq("id", sid).then(function(r){ if(r&&r.error) console.log("foto no banco:", r.error.message); }); }catch(err){}
-      URL.revokeObjectURL(img.src);
-      admEditRead(); render(); return;
-    }
-    // foto do studio também fica visível para o cliente no fluxo de agendamento
-    if(scope==="studio" && S.dashShop){
-      setShopFoto(S.dashShop.id, data);
-      // persiste no banco: sobrevive à limpeza do navegador e aparece em qualquer aparelho
-      try{ sb.from("shops").update({ foto:data }).eq("id", S.dashShop.id).then(function(r){ if(r&&r.error) console.log("foto no banco:", r.error.message); }); }catch(err){}
-    }
-    URL.revokeObjectURL(img.src);
-    // no cadastro, preserva o que já foi digitado antes de redesenhar
-    if(S.role==="onboarding") obReadStep();
-    render();
-  };
+  img.onload = function(){ openCropper(scope, img); };
   img.src = URL.createObjectURL(f);
+  inp.value = "";
 });
+function openCropper(scope, img){
+  closeCropper();
+  _crop = { scope, img, zoom:1, x:0, y:0, drag:null };
+  const ov = document.createElement("div");
+  ov.id = "cropOv";
+  ov.style.cssText = "position:fixed;inset:0;z-index:9999;background:rgba(20,15,8,.78);display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px)";
+  ov.innerHTML = `
+    <div style="background:var(--card,#fff);border-radius:22px;padding:20px;max-width:340px;width:100%;text-align:center">
+      <div style="font-weight:800;font-size:16px;margin-bottom:4px">Ajuste a foto</div>
+      <div style="font-size:12.5px;color:var(--mut,#888);margin-bottom:12px">Arraste para centralizar o rosto e use o zoom.</div>
+      <div id="cropView" style="width:240px;height:240px;border-radius:50%;overflow:hidden;margin:0 auto;touch-action:none;cursor:grab;background:#111;box-shadow:0 0 0 3px rgba(166,121,30,.35)">
+        <canvas id="cropCv" width="240" height="240" style="display:block;width:240px;height:240px"></canvas>
+      </div>
+      <input id="cropZoom" type="range" min="1" max="3" step="0.01" value="1" style="width:88%;margin:16px 0 6px">
+      <div style="display:flex;gap:10px;margin-top:10px">
+        <button class="btn out" id="cropCancel" style="flex:1;margin:0">Cancelar</button>
+        <button class="btn" id="cropOk" style="flex:1;margin:0">Usar foto</button>
+      </div>
+    </div>`;
+  document.body.appendChild(ov);
+  drawCrop();
+  const view = document.getElementById("cropView");
+  view.addEventListener("pointerdown", function(ev){ _crop.drag={ px:ev.clientX, py:ev.clientY, x:_crop.x, y:_crop.y }; view.setPointerCapture(ev.pointerId); view.style.cursor="grabbing"; });
+  view.addEventListener("pointermove", function(ev){ if(!_crop||!_crop.drag) return; _crop.x=_crop.drag.x+(ev.clientX-_crop.drag.px); _crop.y=_crop.drag.y+(ev.clientY-_crop.drag.py); drawCrop(); });
+  const solta=function(){ if(_crop) _crop.drag=null; view.style.cursor="grab"; };
+  view.addEventListener("pointerup", solta); view.addEventListener("pointercancel", solta);
+  document.getElementById("cropZoom").addEventListener("input", function(){ _crop.zoom=+this.value; drawCrop(); });
+  document.getElementById("cropCancel").addEventListener("click", closeCropper);
+  document.getElementById("cropOk").addEventListener("click", function(){
+    const scope=_crop.scope, data=renderCrop(192);
+    closeCropper();
+    applyAvatar(scope, data);
+  });
+}
+// desenha a imagem no visor, respeitando arrasto e zoom (imagem sempre cobre o círculo)
+function cropGeom(vp){
+  const img=_crop.img;
+  const base = Math.max(vp/img.width, vp/img.height) * _crop.zoom;
+  const w=img.width*base, h=img.height*base;
+  // limita o arrasto para a foto nunca deixar buraco no visor
+  const maxX=(w-vp)/2, maxY=(h-vp)/2;
+  _crop.x=Math.max(-maxX, Math.min(maxX, _crop.x));
+  _crop.y=Math.max(-maxY, Math.min(maxY, _crop.y));
+  return { w, h, dx:(vp-w)/2+_crop.x, dy:(vp-h)/2+_crop.y };
+}
+function drawCrop(){
+  const cv=document.getElementById("cropCv"); if(!cv||!_crop) return;
+  const ctx=cv.getContext("2d"), vp=cv.width;
+  const g=cropGeom(vp);
+  ctx.clearRect(0,0,vp,vp);
+  ctx.drawImage(_crop.img, g.dx, g.dy, g.w, g.h);
+}
+// gera a imagem final recortada no tamanho pedido
+function renderCrop(out){
+  const vp=240, esc=out/vp;
+  const g=cropGeom(vp);
+  const c=document.createElement("canvas"); c.width=out; c.height=out;
+  c.getContext("2d").drawImage(_crop.img, g.dx*esc, g.dy*esc, g.w*esc, g.h*esc);
+  return c.toDataURL("image/jpeg", .85);
+}
+function closeCropper(){
+  const ov=document.getElementById("cropOv"); if(ov) ov.remove();
+  if(_crop && _crop.img && _crop.img.src && _crop.img.src.startsWith("blob:")) URL.revokeObjectURL(_crop.img.src);
+  _crop=null;
+}
 
 // fidelidade: nº de cortes acumulados por cliente (10 = próximo grátis, depois zera)
 let fidelidade = { Carlos:9, Pedro:10, Rafael:6, Bruno:3, Tiago:1 };
