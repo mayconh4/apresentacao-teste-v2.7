@@ -13,11 +13,39 @@ const cors = {
 const json = (obj: unknown, status = 200) =>
   new Response(JSON.stringify(obj), { status, headers: { ...cors, "Content-Type": "application/json" } });
 
+const ADMIN_EMAIL = "maycontuliofs@gmail.com";
+// e-mail de quem chamou, extraído do JWT do Supabase (não confiável = vazio)
+function callerEmail(req: Request): string {
+  try {
+    const tok = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
+    const payload = JSON.parse(atob(tok.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+    return String(payload.email || "").toLowerCase();
+  } catch { return ""; }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   try {
     const body = await req.json();
     const h = { "Content-Type": "application/json", access_token: KEY };
+
+    // visão administrativa: pagamentos e assinaturas de toda a plataforma
+    if (body.action === "admin-overview") {
+      if (callerEmail(req) !== ADMIN_EMAIL) return json({ error: "acesso restrito" }, 403);
+      const [pays, subs] = await Promise.all([
+        fetch(`${ASAAS_URL}/payments?limit=100&offset=0`, { headers: h }).then((r) => r.json()),
+        fetch(`${ASAAS_URL}/subscriptions?limit=100&offset=0`, { headers: h }).then((r) => r.json()),
+      ]);
+      return json({
+        payments: (pays.data || []).map((p: any) => ({
+          id: p.id, value: p.value, netValue: p.netValue, status: p.status,
+          date: p.paymentDate || p.dueDate, desc: p.description || "", type: p.billingType,
+        })),
+        subs: (subs.data || []).map((s: any) => ({
+          id: s.id, value: s.value, status: s.status, nextDue: s.nextDueDate, desc: s.description || "",
+        })),
+      });
+    }
 
     if (body.action === "status") {
       const s = await (await fetch(`${ASAAS_URL}/subscriptions/${body.subscriptionId}`, { headers: h })).json();

@@ -1571,7 +1571,66 @@ function renderAdmin(){
     main.innerHTML=`<div class="eyebrow">Administração</div><h1 class="bg">Acesso restrito</h1><div class="hint">Entre com o e-mail de administrador em "Minha conta".</div><button class="btn out" data-a="account">Ir para Minha conta</button>`;
     return;
   }
-  let h = `<div class="eyebrow">Administração · SeuBarba</div><h1 class="bg">Barbearias</h1><div class="hint" style="margin-top:-6px;margin-bottom:12px">Aprove, edite ou exclua os cadastros.</div>`;
+  const tab = S.admTab || "visao";
+  let h = `<div class="eyebrow">Administração · SeuBarba</div><h1 class="bg">Central da plataforma</h1>
+    <div class="seg" style="margin-bottom:14px">
+      <div class="segi ${tab==='visao'?'on':''}" data-a="admTab:visao">Visão geral</div>
+      <div class="segi ${tab==='pag'?'on':''}" data-a="admTab:pag">Pagamentos</div>
+      <div class="segi ${tab==='barb'?'on':''}" data-a="admTab:barb">Barbearias</div>
+    </div>`;
+
+  if(tab==="visao"){
+    const shops = S.adminShops||[];
+    const ativas = shops.filter(x=>x.ativo).length;
+    const pend = shops.length - ativas;
+    const comPlano = shops.filter(x=>x.plano_id).length;
+    const mrr = comPlano*59.90;
+    h += `<div class="kpis">
+      <div class="kpi"><span class="l">Barbearias</span><span class="v">${shops.length}</span></div>
+      <div class="kpi"><span class="l">Ativas</span><span class="v">${ativas}</span></div>
+      <div class="kpi"><span class="l">Pendentes</span><span class="v">${pend}</span></div>
+    </div>
+    <div class="kpis" style="margin-top:10px">
+      <div class="kpi"><span class="l">Planos ativos</span><span class="v">${comPlano}</span></div>
+      <div class="kpi"><span class="l">Receita mensal (planos)</span><span class="v">${fmt(mrr)}</span></div>
+    </div>`;
+    if(S.admPay && S.admPay.payments){
+      const pays = S.admPay.payments;
+      const receb = pays.filter(x=>x.status==="RECEIVED"||x.status==="CONFIRMED");
+      const soma = receb.reduce((t,x)=>t+(+x.value||0),0);
+      const liq = receb.reduce((t,x)=>t+(+x.netValue||+x.value||0),0);
+      h += `<div class="kpis" style="margin-top:10px">
+        <div class="kpi"><span class="l">Cobranças recebidas</span><span class="v">${receb.length}</span></div>
+        <div class="kpi"><span class="l">Bruto</span><span class="v">${fmt(soma)}</span></div>
+        <div class="kpi"><span class="l">Líquido (após taxas)</span><span class="v">${fmt(liq)}</span></div>
+      </div>`;
+    } else if(!S.admPay){ admPayLoad(); h += `<div class="lr" style="justify-content:center;color:var(--mut);margin-top:10px"><span class="spin" style="margin-right:8px"></span>Carregando pagamentos do Asaas…</div>`; }
+    else { h += `<div class="hint" style="margin-top:10px;text-align:center">${S.admPay.error||"Pagamentos indisponíveis."} <b data-a="admPayReload" style="cursor:pointer;color:var(--gold)">Tentar de novo</b></div>`; }
+    if(pend) h += `<div class="errmsg" style="margin-top:14px"><b>${pend} barbearia(s) aguardando aprovação</b> — veja a aba Barbearias.</div>`;
+    h += `<button class="btn out" data-a="account" style="margin-top:14px">Voltar</button>`;
+    main.innerHTML=h; return;
+  }
+
+  if(tab==="pag"){
+    h += `<div class="hint" style="margin-top:-6px;margin-bottom:12px">Cobranças e assinaturas de toda a plataforma, direto do Asaas.</div>`;
+    if(!S.admPay){ admPayLoad(); h += `<div class="lr" style="justify-content:center;color:var(--mut)"><span class="spin" style="margin-right:8px"></span>Carregando…</div>`; }
+    else if(S.admPay.error){ h += `<div class="errmsg">${S.admPay.error}</div><button class="btn out small" data-a="admPayReload">Tentar de novo</button>`; }
+    else {
+      const stLbl = { RECEIVED:"Recebido", CONFIRMED:"Confirmado", PENDING:"Pendente", OVERDUE:"Vencido", REFUNDED:"Estornado", ACTIVE:"Ativa", EXPIRED:"Expirada", INACTIVE:"Inativa" };
+      const stCor = st => (st==="RECEIVED"||st==="CONFIRMED"||st==="ACTIVE") ? "ok" : "";
+      h += `<div class="sllbl" style="margin:4px 0 8px">Assinaturas (planos R$ 59,90)</div>`;
+      if(!S.admPay.subs.length) h += `<div class="lr" style="justify-content:center;color:var(--mut)">Nenhuma assinatura ainda.</div>`;
+      S.admPay.subs.forEach(x=>{ h += `<div class="lr"><div><b>${fmt(+x.value)}</b><div class="c" style="font-size:12px">${x.desc||"Assinatura"} · próx. ${x.nextDue||"—"}</div></div><span class="chip ${stCor(x.status)}">${stLbl[x.status]||x.status}</span></div>`; });
+      h += `<div class="sllbl" style="margin:16px 0 8px">Cobranças (PIX e cartão)</div>`;
+      if(!S.admPay.payments.length) h += `<div class="lr" style="justify-content:center;color:var(--mut)">Nenhuma cobrança ainda.</div>`;
+      S.admPay.payments.forEach(x=>{ h += `<div class="lr"><div><b>${fmt(+x.value)}</b><div class="c" style="font-size:12px">${x.desc||x.type} · ${x.date||""}</div></div><span class="chip ${stCor(x.status)}">${stLbl[x.status]||x.status}</span></div>`; });
+      h += `<button class="btn out small" data-a="admPayReload" style="margin-top:12px">Atualizar</button>`;
+    }
+    h += `<button class="btn out" data-a="account" style="margin-top:14px">Voltar</button>`;
+    main.innerHTML=h; return;
+  }
+
+  h += `<div class="hint" style="margin-top:-6px;margin-bottom:12px">Aprove, edite ou exclua os cadastros.</div>`;
   const list = S.adminShops || [];
   if(!list.length) h += `<div class="lr" style="justify-content:center;color:var(--mut)">Nenhuma barbearia cadastrada ainda.</div>`;
   list.forEach(sp=>{
@@ -1582,6 +1641,21 @@ function renderAdmin(){
   });
   h += `<button class="btn out" data-a="account" style="margin-top:14px">Voltar</button>`;
   main.innerHTML = h;
+}
+let _admPayLoading=false;
+async function admPayLoad(){
+  if(_admPayLoading || !isAdmin()) return; _admPayLoading=true;
+  try{
+    const { data } = await sb.auth.getSession();
+    const tok = data && data.session ? data.session.access_token : "";
+    const r = await fetch(FN_PLAN, { method:"POST",
+      headers:{ "Content-Type":"application/json", "apikey": SB_KEY, "Authorization":"Bearer "+tok },
+      body: JSON.stringify({ action:"admin-overview" }) });
+    const d = await r.json();
+    S.admPay = (d && d.payments) ? d : { error:(d&&d.error)||"Não foi possível carregar os pagamentos.", payments:null };
+  }catch(e){ S.admPay = { error:"Falha de conexão com o Asaas.", payments:null }; }
+  _admPayLoading=false;
+  if(S.role==="admin") render();
 }
 async function admLoad(){ if(!isAdmin()){ S.adminShops=[]; return; } try{ const { data } = await sb.from("shops").select("*").order("criado_em",{ascending:false}); S.adminShops=data||[]; }catch(e){ S.adminShops=[]; } render(); }
 async function admToggle(id, ativo){ if(!isAdmin()) return; let err=null; try{ const r = await sb.from("shops").update({ ativo: !!ativo }).eq("id", id); err=r.error; }catch(e){ err=e; } await admLoad(); if(err) opFail("Não foi possível alterar o status da barbearia.", err); }
@@ -2043,7 +2117,9 @@ main.addEventListener("click", e=>{
   else if(a.startsWith("fpsvc:")){ const key=a.slice(6); const fp=profile||loadFreela()||{}; if(!fp.svc) fp.svc={}; if(fp.svc[key]) delete fp.svc[key]; else { const c=CATALOGO.find(x=>x.key===key); if(c) fp.svc[key]={dur:c.dur}; } profile=fp; render(); return; }
   else if(a==="freelaPanel"){ if(!profile) profile=loadFreela(); S.role="barber"; S.tab="rede"; render(); return; }
   else if(a==="expandir"){ S.barberType="dono"; S.role="onboarding"; S.obStep=null; S.obDraft=null; render(); return; }
-  else if(a==="toAdmin"){ if(!isAdmin()) return; S.role="admin"; render(); admLoad(); return; }
+  else if(a==="toAdmin"){ if(!isAdmin()) return; S.role="admin"; S.admTab="visao"; render(); admLoad(); return; }
+  else if(a.startsWith("admTab:")){ if(!isAdmin()) return; S.admTab=a.slice(7); render(); return; }
+  else if(a==="admPayReload"){ if(!isAdmin()) return; S.admPay=null; render(); return; }
   else if(a.startsWith("admToggle:")){ if(!isAdmin()) return; const p=a.split(":"); admToggle(p[1], p[2]==="1"); return; }
   else if(a.startsWith("admDel:")){ if(!isAdmin()) return; admDelShop(a.slice(7)); return; }
   else if(a.startsWith("svcOpen:")){ const p=a.split(":"); svcOpen(p[1], p[2]||"admin"); return; }
