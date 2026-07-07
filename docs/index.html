@@ -328,7 +328,7 @@ function pAvatar(p, size){
   return `<div class="av" style="width:${size}px;height:${size}px;flex:none">${ini((p&&p.nome)||"?")}</div>`;
 }
 function fotoBtn(scope){
-  return `<label class="btn out small" style="margin:0;cursor:pointer">Trocar foto<input type="file" accept="image/*" data-av="${scope}" style="display:none"></label>`;
+  return `<label class="btn out small" style="margin:0;cursor:pointer">${getAvatar(scope)?'Trocar foto':'Adicionar foto'}<input type="file" accept="image/*" data-av="${scope}" style="display:none"></label>`;
 }
 // redimensiona a imagem escolhida para 96px e salva
 document.addEventListener("change", function(e){
@@ -345,7 +345,10 @@ document.addEventListener("change", function(e){
     try{ localStorage.setItem(avatarKey(scope), data); }catch(err){}
     // foto do studio também fica visível para o cliente no fluxo de agendamento
     if(scope==="studio" && S.dashShop) setShopFoto(S.dashShop.id, data);
-    URL.revokeObjectURL(img.src); render();
+    URL.revokeObjectURL(img.src);
+    // no cadastro, preserva o que já foi digitado antes de redesenhar
+    if(S.role==="onboarding") obReadStep();
+    render();
   };
   img.src = URL.createObjectURL(f);
 });
@@ -697,6 +700,19 @@ function obSteps(){
   return ["barbearia","dados","endereco","horarios"];
 }
 function formErr(msg){ const fe=document.getElementById("formerr"); if(fe) fe.innerHTML=`<div class="errmsg">${msg}</div>`; }
+// bloco de foto obrigatória usado no cadastro (studio e freelancer)
+function fotoObrigatoria(scope, titulo, subt){
+  const tem = !!getAvatar(scope);
+  return `<div class="box" style="margin-bottom:14px;${tem?'':'border-color:rgba(255,69,58,.45)'}">
+    <div style="display:flex;align-items:center;gap:14px">
+      ${avatarHtml(scope, obVal("nomeFantasia")||obVal("respNome")||"?", 56)}
+      <div style="flex:1"><div class="nm" style="font-size:15px">${titulo} <span class="req">*</span></div>
+        <div class="sb">${subt}</div></div>
+      ${fotoBtn(scope)}
+    </div>
+    ${tem?'' :`<div class="boxtxt" style="margin-top:10px;color:var(--cancel);font-weight:600">Obrigatória: sem foto, ${scope==="studio"?"a barbearia não fica ativa para os clientes":"seu perfil não fica ativo para as barbearias"}.</div>`}
+  </div>`;
+}
 // seletor de serviços (tipo + tempo) reutilizado para "atendo sozinho" e colaboradores
 function svcPicker(sel, togAction, durPrefix){
   let h = `<div class="slots" style="grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:6px">`;
@@ -724,6 +740,7 @@ function renderOnboarding(){
   h += `</div><div class="hint" style="margin-top:-6px;margin-bottom:12px">Passo ${idx+1} de ${total} · <span style="color:var(--cancel)">*</span> obrigatório</div><div id="formerr"></div>`;
 
   if(key==="barbearia"){
+    h += fotoObrigatoria("studio", "Foto do studio", "Aparece para os clientes na escolha da barbearia.");
     h += field("nomeFantasia", free?"Nome do seu negócio":"Nome da barbearia", {ph:free?"Ex.: João Barber":"Ex.: SeuBarba Centro", val:obVal("nomeFantasia")});
     h += `<div class="grid2">`+
       field("cpfCnpj","CPF ou CNPJ",{ph:"Somente números",val:obVal("cpfCnpj")})+
@@ -733,6 +750,7 @@ function renderOnboarding(){
     h += field("incomeValue","Faturamento mensal estimado (R$)",{type:"number",ph:"Ex.: 8000",val:obVal("incomeValue")});
   }
   else if(key==="dados"){
+    if(free) h += fotoObrigatoria("freela", "Foto de perfil", "As barbearias veem sua foto ao buscar freelancers.");
     h += field("respNome","Nome completo",{ph:"Nome e sobrenome",val:obVal("respNome")});
     if(free){
       h += `<div class="grid2">`+
@@ -870,6 +888,9 @@ function obValidStep(){
   });
   if(key==="dados"){ const em=document.getElementById("email"); if(em && em.value && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em.value)){ em.classList.add("err"); if(!firstErr) firstErr=em; } }
   if(firstErr){ formErr("Preencha os campos destacados."); firstErr.focus(); return false; }
+  // foto é obrigatória: sem ela a barbearia/freelancer não fica ativa
+  if(key==="barbearia" && !getAvatar("studio")){ formErr("Adicione uma foto do seu studio — sem foto a barbearia não fica ativa para os clientes."); return false; }
+  if(key==="dados" && S.barberType==="freelancer" && !getAvatar("freela")){ formErr("Adicione uma foto de perfil — sem foto seu perfil não fica ativo para as barbearias."); return false; }
   return true;
 }
 // navega pelo fluxo dinâmico de etapas
@@ -1090,6 +1111,9 @@ function renderBarber(){
   let h="";
   if(S.cadastroAviso){ h+=`<div class="ok" style="margin-bottom:14px"><b>Barbearia cadastrada!</b><p>Em análise para aprovação. Configure sua equipe, serviços e horários aqui no painel (aba Conta).</p></div>`; S.cadastroAviso=false; }
   if(S.freelaAviso){ h+=`<div class="ok" style="margin-bottom:14px"><b>Perfil criado!</b><p>Você já pode se candidatar às vagas abertas. Seu perfil fica visível para as barbearias da região.</p></div>`; S.freelaAviso=false; }
+  // foto obrigatória para ficar ativo: aviso para contas que ainda não têm
+  if(dono && !getAvatar("studio")) h+=`<div class="errmsg" style="margin-bottom:14px"><b>Sua barbearia não está ativa:</b> adicione uma foto do studio na aba <b>Conta</b> para aparecer aos clientes.</div>`;
+  if(!dono && isFreela() && !getAvatar("freela")) h+=`<div class="errmsg" style="margin-bottom:14px"><b>Seu perfil não está ativo:</b> adicione uma foto de perfil na aba <b>Conta</b> para aparecer às barbearias.</div>`;
   if(S.tab==="equipe"){
     h+=`<div class="eyebrow">${profile?profile.nomeFantasia:'Barbearia'}</div><h1 class="bg">Equipe</h1>
       <div class="hint" style="margin-top:-8px;margin-bottom:14px">Cadastre seus freelancers e defina a comissão de cada um.</div>`;
