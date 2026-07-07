@@ -11,7 +11,7 @@ const cors = {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   try {
-    const { valor, nome, cpf, whatsapp, descricao, paymentId } = await req.json();
+    const { valor, nome, cpf, whatsapp, descricao, paymentId, shopId } = await req.json();
     const h = { "Content-Type": "application/json", access_token: KEY };
 
     // consulta de status: o app chama com { paymentId } até o PIX ser pago
@@ -40,12 +40,30 @@ Deno.serve(async (req) => {
       customerId = novo.id;
     }
 
+    // split: a barbearia (subconta) recebe a parte dela; a comissão fica na conta principal
+    let split: unknown[] | undefined;
+    if (shopId) {
+      try {
+        const su = Deno.env.get("SUPABASE_URL")!;
+        const sk = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+        const rows = await (await fetch(`${su}/rest/v1/shops?id=eq.${shopId}&select=asaas_wallet`, {
+          headers: { apikey: sk, Authorization: `Bearer ${sk}` },
+        })).json();
+        const wallet = rows[0]?.asaas_wallet;
+        if (wallet) {
+          const comissao = Number(Deno.env.get("PLATFORM_COMMISSION") || "5"); // % do admin
+          split = [{ walletId: wallet, percentualValue: Math.max(0, 100 - comissao) }];
+        }
+      } catch (_) { /* sem wallet: 100% fica na conta principal */ }
+    }
+
     // 2) cobrança PIX com vencimento hoje
     const cob = await (await fetch(`${ASAAS_URL}/payments`, {
       method: "POST", headers: h,
       body: JSON.stringify({
         customer: customerId, billingType: "PIX", value: valor,
         dueDate: new Date().toISOString().slice(0, 10), description: descricao,
+        ...(split ? { split } : {}),
       }),
     })).json();
     if (!cob.id) throw new Error(JSON.stringify(cob.errors || cob));

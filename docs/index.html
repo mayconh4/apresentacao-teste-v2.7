@@ -1794,8 +1794,11 @@ function renderAdmin(){
     const trialBtn = sp.plano_id ? "" : (emTeste
       ? `<button class="btn out small" data-a="admTrial:${sp.id}:0">Encerrar teste</button>`
       : `<button class="btn out small" data-a="admTrial:${sp.id}:1">🎁 Mês grátis</button>`);
+    const walletBtn = sp.asaas_wallet
+      ? `<span class="chip ok">Split ativo</span>`
+      : `<button class="btn out small" data-a="admWallet:${sp.id}">💸 Ativar split</button>`;
     h += `<div class="box" style="margin-bottom:10px"><div style="display:flex;align-items:center;gap:10px"><div style="flex:1"><div class="nm" style="font-size:15px">${sp.nome||"(sem nome)"}</div><div class="sb">${sp.responsavel||""}${sp.email?" · "+sp.email:""}</div><div class="sb">${sp.bairro||""} ${sp.cep||""}</div></div>${trialChip}${st}</div>
-      <div class="fidwrap" style="justify-content:flex-end;gap:8px;flex-wrap:wrap"><button class="btn out small" data-a="svcOpen:${sp.id}:admin">Serviços</button><button class="btn out small" data-a="admBarb:${sp.id}">Barbeiros</button><button class="btn out small" data-a="shopEdit:${sp.id}:admin">Editar</button>${trialBtn}${btn}<button class="btn out small" data-a="admDel:${sp.id}" style="color:var(--cancel);border-color:rgba(255,59,48,.35)">Excluir</button></div></div>`;
+      <div class="fidwrap" style="justify-content:flex-end;gap:8px;flex-wrap:wrap"><button class="btn out small" data-a="svcOpen:${sp.id}:admin">Serviços</button><button class="btn out small" data-a="admBarb:${sp.id}">Barbeiros</button><button class="btn out small" data-a="shopEdit:${sp.id}:admin">Editar</button>${trialBtn}${walletBtn}${btn}<button class="btn out small" data-a="admDel:${sp.id}" style="color:var(--cancel);border-color:rgba(255,59,48,.35)">Excluir</button></div></div>`;
   });
   h += `<button class="btn out" data-a="account" style="margin-top:14px">Voltar</button>`;
   main.innerHTML = h;
@@ -1816,6 +1819,20 @@ async function admPayLoad(){
   if(S.role==="admin") render();
 }
 async function admLoad(){ if(!isAdmin()){ S.adminShops=[]; return; } try{ const { data } = await sb.from("shops").select("*").order("criado_em",{ascending:false}); S.adminShops=data||[]; }catch(e){ S.adminShops=[]; } render(); }
+// cria a subconta Asaas da barbearia para o split de pagamentos
+async function admWallet(id){
+  if(!isAdmin()) return;
+  try{
+    const { data } = await sb.auth.getSession();
+    const tok = data && data.session ? data.session.access_token : "";
+    const r = await fetch(FN_PLAN, { method:"POST",
+      headers:{ "Content-Type":"application/json", "apikey": SB_KEY, "Authorization":"Bearer "+tok },
+      body: JSON.stringify({ action:"subconta", shopId:id }) });
+    const d = await r.json();
+    if(d && d.walletId){ await admLoad(); }
+    else opFail("Não foi possível criar a subconta.", { message:(d&&d.error)||"erro" });
+  }catch(e){ opFail("Falha de conexão ao criar a subconta.", e); }
+}
 // concede/encerra um mês grátis de teste para uma barbearia
 async function admTrial(id, conceder){
   if(!isAdmin()) return;
@@ -2313,6 +2330,7 @@ main.addEventListener("click", e=>{
   else if(a.startsWith("admTab:")){ if(!isAdmin()) return; S.admTab=a.slice(7); render(); return; }
   else if(a==="admPayReload"){ if(!isAdmin()) return; S.admPay=null; render(); return; }
   else if(a.startsWith("admTrial:")){ if(!isAdmin()) return; const p=a.split(":"); admTrial(p[1], p[2]==="1"); return; }
+  else if(a.startsWith("admWallet:")){ if(!isAdmin()) return; admWallet(a.slice(10)); return; }
   else if(a.startsWith("admToggle:")){ if(!isAdmin()) return; const p=a.split(":"); admToggle(p[1], p[2]==="1"); return; }
   else if(a.startsWith("admDel:")){ if(!isAdmin()) return; admDelShop(a.slice(7)); return; }
   else if(a.startsWith("svcOpen:")){ const p=a.split(":"); svcOpen(p[1], p[2]||"admin"); return; }
@@ -2478,7 +2496,7 @@ async function createPixReal(){
     const r = await fetch(FN_PIX, {
       method:"POST",
       headers:{ "Content-Type":"application/json", "apikey": SB_KEY, "Authorization":"Bearer "+SB_KEY },
-      body: JSON.stringify((function(){ const pv=precoCliente(); return { valor:pv.final, nome:S.payer.nome, cpf:S.payer.cpf, whatsapp:S.payer.zap, descricao:S.service.nome + (pv.pct?` (desconto ${pv.pct}%)`:"") }; })())
+      body: JSON.stringify((function(){ const pv=precoCliente(); return { valor:pv.final, nome:S.payer.nome, cpf:S.payer.cpf, whatsapp:S.payer.zap, shopId: S.shop && S.shop.id, descricao:S.service.nome + (pv.pct?` (desconto ${pv.pct}%)`:"") }; })())
     });
     const d = await r.json();
     if(d && d.qrImage){ S.pixData = { qrImage:d.qrImage, copiaECola:d.copiaECola, paymentId:d.paymentId }; savePixPending(); startPixPoll(); }

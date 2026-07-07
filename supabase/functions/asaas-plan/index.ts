@@ -48,6 +48,36 @@ Deno.serve(async (req) => {
       return json({ finalUrl: url });
     }
 
+    // cria a subconta Asaas de uma barbearia (split de pagamentos) — só admin
+    if (body.action === "subconta") {
+      if (callerEmail(req) !== ADMIN_EMAIL) return json({ error: "acesso restrito" }, 403);
+      const su = Deno.env.get("SUPABASE_URL")!;
+      const sk = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      const sbH = { apikey: sk, Authorization: `Bearer ${sk}`, "Content-Type": "application/json" };
+      const rows = await (await fetch(`${su}/rest/v1/shops?id=eq.${body.shopId}&select=*`, { headers: sbH })).json();
+      const shop = rows[0];
+      if (!shop) return json({ error: "barbearia não encontrada" }, 404);
+      if (shop.asaas_wallet) return json({ walletId: shop.asaas_wallet, jaExistia: true });
+      const doc = String(shop.cpf_cnpj || "").replace(/\D/g, "");
+      const conta = await (await fetch(`${ASAAS_URL}/accounts`, {
+        method: "POST", headers: h,
+        body: JSON.stringify({
+          name: shop.nome, email: shop.email, cpfCnpj: doc,
+          ...(doc.length > 11 ? { companyType: shop.tipo_empresa === "MEI" ? "MEI" : "LIMITED" } : { birthDate: shop.nascimento || "1990-01-01" }),
+          mobilePhone: String(shop.telefone || "").replace(/\D/g, ""),
+          incomeValue: Number(shop.faturamento) || 5000,
+          address: shop.logradouro || "Rua sem nome", addressNumber: String(shop.numero || "s/n"),
+          province: shop.bairro || "Centro", postalCode: String(shop.cep || "").replace(/\D/g, ""),
+        }),
+      })).json();
+      const walletId = conta.walletId || (conta.wallets && conta.wallets[0] && conta.wallets[0].id);
+      if (!walletId) return json({ error: JSON.stringify(conta.errors || conta) }, 500);
+      await fetch(`${su}/rest/v1/shops?id=eq.${body.shopId}`, {
+        method: "PATCH", headers: sbH, body: JSON.stringify({ asaas_wallet: walletId }),
+      });
+      return json({ walletId });
+    }
+
     // visão administrativa: pagamentos e assinaturas de toda a plataforma
     if (body.action === "admin-overview") {
       if (callerEmail(req) !== ADMIN_EMAIL) return json({ error: "acesso restrito" }, 403);
