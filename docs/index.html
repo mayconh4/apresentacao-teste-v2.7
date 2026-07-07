@@ -261,6 +261,33 @@ function freelaKey(){ return "sb_freela_"+(S.authEmail||"").toLowerCase(); }
 function saveFreela(d){ try{ localStorage.setItem(freelaKey(), JSON.stringify(d)); }catch(e){} }
 function loadFreela(){ try{ const r=localStorage.getItem(freelaKey()); return r?JSON.parse(r):null; }catch(e){ return null; } }
 function clearFreela(){ try{ localStorage.removeItem(freelaKey()); }catch(e){} }
+// captura a localização (GPS) do studio no cadastro
+function obGeo(){
+  const msg = document.getElementById("obGeoMsg");
+  if(!navigator.geolocation){ if(msg) msg.textContent="Seu navegador não suporta localização."; return; }
+  if(msg) msg.textContent="Obtendo sua localização…";
+  obReadStep();
+  navigator.geolocation.getCurrentPosition(function(pos){
+    S.obDraft.lat = pos.coords.latitude; S.obDraft.lng = pos.coords.longitude;
+    render();
+  }, function(){ if(msg) msg.textContent="Não consegui acessar o GPS. Permita o acesso à localização e tente de novo."; });
+}
+// adiciona/atualiza a localização de uma barbearia já cadastrada (aba Conta)
+function shopGeo(shopId){
+  const msg = document.getElementById("shopGeoMsg_"+shopId);
+  if(!navigator.geolocation){ if(msg) msg.textContent="Seu navegador não suporta localização."; return; }
+  if(msg) msg.textContent="Obtendo sua localização…";
+  navigator.geolocation.getCurrentPosition(async function(pos){
+    const lat=pos.coords.latitude, lng=pos.coords.longitude;
+    try{
+      const { error } = await sb.from("shops").update({ lat, lng }).eq("id", shopId);
+      if(error){ if(msg) msg.textContent="Não deu para salvar: "+(error.message||"erro"); return; }
+      (S.myShops||[]).forEach(function(sp){ if(sp.id===shopId){ sp.lat=lat; sp.lng=lng; } });
+      if(S.dashShop && S.dashShop.id===shopId){ S.dashShop.lat=lat; S.dashShop.lng=lng; }
+      render();
+    }catch(e){ if(msg) msg.textContent="Não deu para salvar a localização."; }
+  }, function(){ if(msg) msg.textContent="Não consegui acessar o GPS. Permita o acesso à localização."; });
+}
 // salva a edição do perfil do freelancer (aba Conta)
 function fpSave(){
   const fp = profile || loadFreela() || { tipo:"freelancer" };
@@ -727,6 +754,9 @@ function renderOnboarding(){
       `</div>`;
     h += field("address","Endereço",{ph:"Rua / Avenida",val:obVal("address")});
     h += field("province","Bairro",{ph:"Bairro",val:obVal("province")});
+    const temLoc = S.obDraft.lat!=null && S.obDraft.lng!=null;
+    h += `<button class="btn ${temLoc?'':'out'}" data-a="obGeo" style="margin:0 0 6px">${temLoc?'✓ Localização adicionada':'📍 Adicionar localização (GPS)'}</button>`;
+    h += `<div class="hint" id="obGeoMsg" style="margin-top:0;text-align:center">${temLoc?'O cliente encontra seu studio em “A mais próxima de você”.':'Use o GPS para o cliente encontrar seu studio no mapa.'}</div>`;
     h += `<div class="formnote">Cidade e UF são preenchidas pelo CEP. Ao criar a conta, o Asaas envia um e-mail de ativação.</div>`;
   }
   else if(key==="modelo"){
@@ -879,6 +909,7 @@ async function saveOnboarding(){
         cpf_cnpj: d.cpfCnpj, tipo_empresa: d.companyType, faturamento: Number(d.incomeValue)||null,
         responsavel: d.respNome, email: d.email, telefone: d.mobilePhone, nascimento: brDateToISO(d.birthDate),
         cep: d.postalCode, logradouro: d.address, numero: d.addressNumber,
+        lat: (d.lat!=null?d.lat:null), lng: (d.lng!=null?d.lng:null),
         abre: (d.abre?parseInt(d.abre.split(":")[0],10):8), fecha: (d.fecha?parseInt(d.fecha.split(":")[0],10):19),
         almoco_ini: (d.almocoIni?parseInt(d.almocoIni.split(":")[0],10):null), almoco_fim: (d.almocoFim?parseInt(d.almocoFim.split(":")[0],10):null),
         dias: d.dias||[]
@@ -1307,8 +1338,10 @@ function renderBarber(){
     else S.myShops.forEach(function(sp){
       const atual = S.dashShop && S.dashShop.id===sp.id;
       const st = sp.ativo ? `<span class="chip ok">Ativa</span>` : `<span class="chip" style="background:rgba(255,159,10,.2);color:#a86400">Inativa</span>`;
+      const temLoc = sp.lat!=null && sp.lng!=null;
       h+=`<div class="box" style="margin-bottom:10px;${atual?'border-color:var(--gold)':''}"><div style="display:flex;align-items:center;gap:10px"><div style="flex:1"><div class="nm" style="font-size:15px">${sp.nome||"(sem nome)"}</div><div class="sb">${sp.bairro||""}${atual?" · em exibição":""}</div></div>${st}</div>
-        <div class="fidwrap" style="justify-content:flex-end;gap:8px;flex-wrap:wrap">${atual?"":`<button class="btn small" data-a="dash:${sp.id}">Abrir painel</button>`}<button class="btn out small" data-a="shopEdit:${sp.id}:dash">Editar</button><button class="btn out small" data-a="admBarb:${sp.id}:dash">Equipe</button><button class="btn out small" data-a="svcOpen:${sp.id}:dash">Serviços</button></div></div>`;
+        <div class="fidwrap" style="justify-content:flex-end;gap:8px;flex-wrap:wrap">${atual?"":`<button class="btn small" data-a="dash:${sp.id}">Abrir painel</button>`}<button class="btn out small" data-a="shopEdit:${sp.id}:dash">Editar</button><button class="btn out small" data-a="admBarb:${sp.id}:dash">Equipe</button><button class="btn out small" data-a="svcOpen:${sp.id}:dash">Serviços</button><button class="btn ${temLoc?'out':''} small" data-a="shopGeo:${sp.id}" style="margin:0">${temLoc?'✓ Localização':'📍 Adicionar localização'}</button></div>
+        <div class="hint" id="shopGeoMsg_${sp.id}" style="margin:4px 0 0;text-align:right"></div></div>`;
     });
     h+=`<button class="btn out" data-a="toCreate" style="margin-top:14px">Cadastrar nova barbearia</button>`;
     if(isAdmin()) h+=`<button class="btn out" data-a="toAdmin" style="margin-top:10px">Painel do administrador</button>`;
@@ -1820,6 +1853,8 @@ main.addEventListener("click", e=>{
   else if(a==="cpAgendar"){ goHome(); return; }
   else if(a==="fpEdit"){ S.fpEdit=!S.fpEdit; render(); return; }
   else if(a==="fpSave"){ fpSave(); return; }
+  else if(a==="obGeo"){ obGeo(); return; }
+  else if(a.startsWith("shopGeo:")){ shopGeo(a.slice(8)); return; }
   else if(a==="promoEdit"){ S.promoEdit=true; render(); return; }
   else if(a==="promoSave"){ const i=document.getElementById("promoTxt"); lsSet("sb_promo", i?i.value.trim():""); S.promoEdit=false; render(); return; }
   else if(a==="promoDel"){ lsSet("sb_promo", null); S.promoEdit=false; render(); return; }
