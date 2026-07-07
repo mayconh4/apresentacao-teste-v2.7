@@ -1471,6 +1471,9 @@ async function openDash(shopId){
   if(!sp) return;
   S.dashShop = sp;
   profile = Object.assign({}, profile||{}, { nomeFantasia: sp.nome, tipo:"dono", respNome: sp.responsavel||"", mobilePhone: sp.telefone||"" });
+  // garante que a foto do studio (aba Conta) fique vinculada à barbearia para o cliente ver
+  const fotoStudio = getAvatar("studio");
+  if(fotoStudio && !getShopFoto(sp.id)) setShopFoto(sp.id, fotoStudio);
   S.role="barber"; S.tab="dash";
   render();
 }
