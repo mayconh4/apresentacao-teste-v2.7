@@ -279,6 +279,17 @@ function obGeo(){
     render();
   }, function(){ if(msg) msg.textContent="Não consegui acessar o GPS. Permita o acesso à localização e tente de novo."; });
 }
+// GPS no editor da barbearia (admin/dono): preenche lat/lng do formulário
+function edGeo(){
+  const msg=document.getElementById("edGeoMsg");
+  if(!navigator.geolocation){ if(msg) msg.textContent="Seu navegador não suporta localização."; return; }
+  if(msg) msg.textContent="Obtendo sua localização…";
+  navigator.geolocation.getCurrentPosition(function(pos){
+    admEditRead();
+    if(S.editShop){ S.editShop.lat=pos.coords.latitude; S.editShop.lng=pos.coords.longitude; }
+    render();
+  }, function(){ if(msg) msg.textContent="Não consegui acessar o GPS. Permita o acesso ou preencha as coordenadas."; });
+}
 // adiciona/atualiza a localização de uma barbearia já cadastrada (aba Conta)
 function shopGeo(shopId){
   const msg = document.getElementById("shopGeoMsg_"+shopId);
@@ -350,6 +361,15 @@ document.addEventListener("change", function(e){
     c.getContext("2d").drawImage(img, (s-w)/2, (s-h2)/2, w, h2);
     const data = c.toDataURL("image/jpeg", .82);
     try{ localStorage.setItem(avatarKey(scope), data); }catch(err){}
+    // editor da barbearia (admin/dono): grava a foto direto no banco daquela loja
+    if(scope==="shopedit" && S.editShop){
+      const sid = S.editShop.id;
+      S.editShop.foto = data;
+      setShopFoto(sid, data);
+      try{ sb.from("shops").update({ foto:data }).eq("id", sid).then(function(r){ if(r&&r.error) console.log("foto no banco:", r.error.message); }); }catch(err){}
+      URL.revokeObjectURL(img.src);
+      admEditRead(); render(); return;
+    }
     // foto do studio também fica visível para o cliente no fluxo de agendamento
     if(scope==="studio" && S.dashShop){
       setShopFoto(S.dashShop.id, data);
@@ -1934,12 +1954,25 @@ function renderAdminEdit(){
   tabbar.style.display="none"; steps.style.display="none";
   const sp = S.editShop;
   let h = `<div class="eyebrow">Editar · ${sp.nome||"barbearia"}</div><h1 class="bg">Dados da barbearia</h1><div class="hint" style="margin-top:-6px;margin-bottom:12px">Altere o que precisar e salve.</div><div id="editerr"></div>`;
+  // foto da barbearia (aparece para o cliente)
+  const fotoAtual = sp.foto || getShopFoto(sp.id);
+  h += `<div class="box" style="margin-bottom:14px"><div style="display:flex;align-items:center;gap:14px">
+    ${fotoAtual?`<img src="${fotoAtual}" alt="" style="width:56px;height:56px;border-radius:50%;object-fit:cover;flex:none">`:`<div class="av" style="width:56px;height:56px;flex:none">${ini(sp.nome||"?")}</div>`}
+    <div style="flex:1"><div class="nm" style="font-size:15px">Foto da barbearia</div><div class="sb">Aparece para os clientes na página inicial.</div></div>
+    <label class="btn out small" style="margin:0;cursor:pointer">${fotoAtual?'Trocar foto':'Adicionar foto'}<input type="file" accept="image/*" data-av="shopedit" style="display:none"></label>
+  </div></div>`;
   h += field("edNome","Nome da barbearia",{val:sp.nome||""});
   h += field("edBairro","Bairro",{req:false,val:sp.bairro||""});
   h += field("edResp","Responsável",{req:false,val:sp.responsavel||""});
   h += `<div class="grid2">`+field("edEmail","E-mail",{req:false,type:"email",val:sp.email||""})+field("edTel","Celular (WhatsApp)",{req:false,val:sp.telefone||""})+`</div>`;
   h += `<div class="grid2">`+field("edCep","CEP",{req:false,val:sp.cep||""})+field("edNum","Número",{req:false,val:sp.numero||""})+`</div>`;
   h += field("edLog","Endereço",{req:false,val:sp.logradouro||""});
+  // localização (GPS ou coordenadas manuais)
+  const temLocEd = sp.lat!=null && sp.lng!=null;
+  h += `<div class="sllbl" style="margin:6px 0 8px">Localização</div>
+    <div class="grid2">`+field("edLat","Latitude",{req:false,val:(sp.lat!=null?String(sp.lat):"")})+field("edLng","Longitude",{req:false,val:(sp.lng!=null?String(sp.lng):"")})+`</div>
+    <button class="btn ${temLocEd?'out':''}" data-a="edGeo" style="margin:0 0 6px">${temLocEd?'✓ Localização definida — atualizar pelo GPS':'📍 Usar minha localização atual (GPS)'}</button>
+    <div class="hint" id="edGeoMsg" style="margin:0 0 14px;text-align:center">Sem localização a barbearia não fica ativa na página inicial.</div>`;
   h += `<div class="sllbl" style="margin:6px 0 8px">Dias de atendimento</div><div class="slots" style="grid-template-columns:repeat(4,1fr);margin-bottom:14px">`;
   const dias = sp.dias||[];
   DIAS.forEach(function(d){ const on=dias.indexOf(d.k)>=0; h += `<div class="slot ${on?"sel":""}" data-a="admDia:${d.k}">${d.t}</div>`; });
@@ -1994,6 +2027,9 @@ function admEditRead(){
   sp.abre=parseInt(g("edAbre"),10); sp.fecha=parseInt(g("edFecha"),10);
   sp.almoco_ini = g("edAlmIni")==="" ? null : parseInt(g("edAlmIni"),10);
   sp.almoco_fim = g("edAlmFim")==="" ? null : parseInt(g("edAlmFim"),10);
+  const la=g("edLat").trim().replace(",","."), lo=g("edLng").trim().replace(",",".");
+  sp.lat = la==="" ? null : (isNaN(+la)?sp.lat:+la);
+  sp.lng = lo==="" ? null : (isNaN(+lo)?sp.lng:+lo);
 }
 async function admEditSave(){
   admEditRead();
@@ -2004,7 +2040,8 @@ async function admEditSave(){
     const r = await sb.from("shops").update({
       nome:sp.nome, bairro:sp.bairro, responsavel:sp.responsavel, email:sp.email, telefone:sp.telefone,
       cep:sp.cep, numero:sp.numero, logradouro:sp.logradouro,
-      abre:sp.abre, fecha:sp.fecha, almoco_ini:sp.almoco_ini, almoco_fim:sp.almoco_fim, dias:sp.dias||[]
+      abre:sp.abre, fecha:sp.fecha, almoco_ini:sp.almoco_ini, almoco_fim:sp.almoco_fim, dias:sp.dias||[],
+      lat:sp.lat, lng:sp.lng
     }).eq("id", sp.id);
     err=r.error;
   }catch(e){ err=e; }
@@ -2131,6 +2168,7 @@ main.addEventListener("click", e=>{
   else if(a==="fpEdit"){ S.fpEdit=!S.fpEdit; render(); return; }
   else if(a==="fpSave"){ fpSave(); return; }
   else if(a==="obGeo"){ obGeo(); return; }
+  else if(a==="edGeo"){ edGeo(); return; }
   else if(a.startsWith("shopGeo:")){ shopGeo(a.slice(8)); return; }
   else if(a==="planForm"){ S.planForm=true; render(); return; }
   else if(a==="planFormOff"){ S.planForm=false; render(); return; }
