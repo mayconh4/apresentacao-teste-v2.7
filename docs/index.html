@@ -187,6 +187,9 @@
   .tile.off{ opacity:.5; }
   .herologo{ text-align:center; margin:2px 0 16px; }
   .herologo img{ width:58%; max-width:180px; border-radius:16px; filter:drop-shadow(0 6px 16px rgba(0,0,0,.28)); }
+  /* spinner de aguardando pagamento */
+  .spin{ width:18px; height:18px; border-radius:50%; border:2.5px solid rgba(0,0,0,.15); border-top-color:var(--gold,#A6791E); animation:spin .8s linear infinite; flex:none; display:inline-block; }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
 </style>
 </head>
 <body>
@@ -636,12 +639,60 @@ function renderClient(){
       <div class="lbl">PIX copia e cola (simulado)</div>
       <div class="copy">00020126BR.GOV.BCB.PIX5204000053039865402${pv.final.toFixed(2)}5802BR6009SEUBARBA6304</div>`
           : `<div class="hint" style="text-align:center;padding:44px 0">Gerando PIX...</div>`)}
+      ${(S.pixData||S.pixTried)?`<button class="btn" data-a="copiapix" style="margin-top:10px">Copiar código PIX</button>`:""}
       <div class="hint" style="text-align:center">${S.payer.nome} · ${b} · ${S.service.nome} · ${hhmm(S.time)}</div>
       <div id="paybox"><button class="btn" data-a="pay">Já paguei</button></div>
       </div>`;
   }
   main.innerHTML=h;
   if(S.step===4 && S.pixGen) startTimer();
+}
+// confirmação do pagamento: usada pelo botão "Já paguei" e pelo polling do Asaas
+function confirmarPagamento(){
+  if(S.paid) return;
+  S.paid=true;
+  clearInterval(pixPoll);
+  const nomeCli = (S.payer&&S.payer.nome)||"Você";
+  const pvPay = precoCliente();
+  appointments.push({ id:"new", barbeiro:S.barber==="any"?"b1":S.barber, cliente:nomeCli, service:S.service.id, min:S.time, dia:S.dia, valor:pvPay.final, status:"pago" });
+  // o desconto vale para um corte: consumido após o pagamento
+  if(pvPay.pct){ const alvo=nomeCli.trim().toLowerCase(); Object.keys(descontos).forEach(n=>{ if(n.trim().toLowerCase()===alvo) delete descontos[n]; }); saveDescontos(); }
+  let c=(fidelidade[nomeCli]||0); c = (c%10===0 && c>0) ? 1 : c+1; fidelidade[nomeCli]=c;
+  clearInterval(timerInt);
+  const wa = waAgendamento();
+  const waBtn = wa ? `<a class="btn" href="${wa}" target="_blank" rel="noopener" style="display:block;text-align:center;text-decoration:none;background:linear-gradient(135deg,#25d366,#1da851);color:#fff;border-color:#1da851;margin-top:14px">Avisar a barbearia no WhatsApp</a>` : "";
+  const extra = wa ? " Toque no botão verde para avisar a barbearia pelo WhatsApp." : "";
+  const box = document.getElementById("paybox");
+  if(box) box.innerHTML=`<div class="ok"><b>Pagamento confirmado</b><p>Seu horário está reservado.${extra} Após o corte, avalie o atendimento.</p></div>${waBtn}<button class="btn out" data-a="rate" style="margin-top:12px">Avaliar atendimento</button><button class="btn out" data-a="reset">Novo agendamento</button>`;
+}
+// copia o código PIX e mostra o carregamento até o Asaas confirmar o pagamento
+function copiarPix(){
+  const cod = (S.pixData && S.pixData.copiaECola) || (document.querySelector(".copy")||{}).textContent || "";
+  const done = ()=>{
+    S.aguardandoPix=true;
+    const box=document.getElementById("paybox");
+    if(box) box.innerHTML=`<div class="hint" style="text-align:center;display:flex;align-items:center;justify-content:center;gap:10px;padding:14px 0">
+      <span class="spin"></span> Código copiado! Aguardando a confirmação do pagamento…</div>
+      <button class="btn out" data-a="pay" style="margin-top:6px">Já paguei (confirmar manualmente)</button>`;
+  };
+  if(navigator.clipboard && cod) navigator.clipboard.writeText(cod).then(done).catch(done);
+  else done();
+}
+// pergunta ao Asaas (via Edge Function) se o PIX já foi pago
+let pixPoll;
+function startPixPoll(){
+  clearInterval(pixPoll);
+  if(!S.pixData || !S.pixData.paymentId) return;
+  pixPoll = setInterval(async ()=>{
+    if(S.paid || !S.pixGen){ clearInterval(pixPoll); return; }
+    try{
+      const r = await fetch(FN_PIX, { method:"POST",
+        headers:{ "Content-Type":"application/json", "apikey": SB_KEY, "Authorization":"Bearer "+SB_KEY },
+        body: JSON.stringify({ paymentId: S.pixData.paymentId }) });
+      const d = await r.json();
+      if(d && (d.status==="RECEIVED" || d.status==="CONFIRMED" || d.status==="RECEIVED_IN_CASH")) confirmarPagamento();
+    }catch(e){}
+  }, 4000);
 }
 let timerInt;
 function startTimer(){
@@ -1787,34 +1838,21 @@ main.addEventListener("click", e=>{
     let bad=null; [nome,cpf,zap].forEach(el=>{ if(!el.value.trim()){ el.classList.add("err"); if(!bad)bad=el; } else el.classList.remove("err"); });
     if(bad){ document.getElementById("payerr").innerHTML=`<div class="errmsg">Preencha nome, CPF e WhatsApp.</div>`; bad.focus(); return; }
     S.payer={ nome:nome.value.trim(), cpf:cpf.value.trim(), zap:zap.value.trim() };
-    S.pixGen=true; S.paid=false; S.pixData=null; S.pixTried=false; render(); createPixReal(); return;
+    S.pixGen=true; S.paid=false; S.pixData=null; S.pixTried=false; S.aguardandoPix=false; clearInterval(pixPoll); render(); createPixReal(); return;
   }
   else if(a==="fillpay"){
     S.payer={ nome:"Maycon Souza", cpf:"123.456.789-00", zap:"(11) 98888-7777" };
     render(); return;
   }
-  else if(a==="pay"){
-    S.paid=true;
-    const nomeCli = (S.payer&&S.payer.nome)||"Você";
-    const pvPay = precoCliente();
-    appointments.push({ id:"new", barbeiro:S.barber==="any"?"b1":S.barber, cliente:nomeCli, service:S.service.id, min:S.time, dia:S.dia, valor:pvPay.final, status:"pago" });
-    // o desconto vale para um corte: consumido após o pagamento
-    if(pvPay.pct){ const alvo=nomeCli.trim().toLowerCase(); Object.keys(descontos).forEach(n=>{ if(n.trim().toLowerCase()===alvo) delete descontos[n]; }); saveDescontos(); }
-    let c=(fidelidade[nomeCli]||0); c = (c%10===0 && c>0) ? 1 : c+1; fidelidade[nomeCli]=c;
-    clearInterval(timerInt);
-    const wa = waAgendamento();
-    const waBtn = wa ? `<a class="btn" href="${wa}" target="_blank" rel="noopener" style="display:block;text-align:center;text-decoration:none;background:linear-gradient(135deg,#25d366,#1da851);color:#fff;border-color:#1da851;margin-top:14px">Avisar a barbearia no WhatsApp</a>` : "";
-    const extra = wa ? " Toque no botão verde para avisar a barbearia pelo WhatsApp." : "";
-    document.getElementById("paybox").innerHTML=`<div class="ok"><b>Pagamento confirmado</b><p>Seu horário está reservado.${extra} Após o corte, avalie o atendimento.</p></div>${waBtn}<button class="btn out" data-a="rate" style="margin-top:12px">Avaliar atendimento</button><button class="btn out" data-a="reset">Novo agendamento</button>`;
-    return;
-  }
+  else if(a==="pay"){ confirmarPagamento(); return; }
+  else if(a==="copiapix"){ copiarPix(); return; }
   else if(a==="rate"){ S.step=5; S.stars=0; S.rated=false; }
   else if(a.startsWith("star:")){ S.stars=+a.slice(5); render(); return; }
   else if(a==="sendrate"){
     if(!S.stars){ document.querySelector(".ratelabel").innerHTML='<span style="color:var(--cancel)">Escolha de 1 a 5 estrelas</span>'; return; }
     S.rated=true; render(); return;
   }
-  else if(a==="reset"){ S.step=1; S.barber=null; S.service=null; S.time=null; S.dia=null; S.pixGen=false; S.paid=false; S.payer=null; S.stars=0; S.rated=false; }
+  else if(a==="reset"){ clearInterval(pixPoll); S.step=1; S.barber=null; S.service=null; S.time=null; S.dia=null; S.pixGen=false; S.paid=false; S.payer=null; S.stars=0; S.rated=false; S.aguardandoPix=false; }
   else if(a==="save"){ saveOnboarding(); return; }
   else if(a==="obNext"){ obReadStep(); if(!obValidStep()) return; obGo(1); return; }
   else if(a==="obBack"){ obReadStep(); obGo(-1); return; }
@@ -2056,7 +2094,7 @@ async function createPixReal(){
       body: JSON.stringify((function(){ const pv=precoCliente(); return { valor:pv.final, nome:S.payer.nome, cpf:S.payer.cpf, whatsapp:S.payer.zap, descricao:S.service.nome + (pv.pct?` (desconto ${pv.pct}%)`:"") }; })())
     });
     const d = await r.json();
-    if(d && d.qrImage){ S.pixData = { qrImage:d.qrImage, copiaECola:d.copiaECola, paymentId:d.paymentId }; }
+    if(d && d.qrImage){ S.pixData = { qrImage:d.qrImage, copiaECola:d.copiaECola, paymentId:d.paymentId }; startPixPoll(); }
   }catch(e){ console.log("PIX: usando simulado (funcao indisponivel)", e); }
   S.pixTried = true;
   // não re-renderizar se o pagamento já foi confirmado (não apagar a tela de sucesso)

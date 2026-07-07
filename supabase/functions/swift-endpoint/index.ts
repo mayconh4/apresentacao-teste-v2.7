@@ -11,8 +11,17 @@ const cors = {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   try {
-    const { valor, nome, cpf, whatsapp, descricao } = await req.json();
+    const { valor, nome, cpf, whatsapp, descricao, paymentId } = await req.json();
     const h = { "Content-Type": "application/json", access_token: KEY };
+
+    // consulta de status: o app chama com { paymentId } até o PIX ser pago
+    if (paymentId) {
+      const pg = await (await fetch(`${ASAAS_URL}/payments/${paymentId}`, { headers: h })).json();
+      return new Response(JSON.stringify({ status: pg.status || "UNKNOWN" }), {
+        headers: { ...cors, "Content-Type": "application/json" },
+      });
+    }
+
     const doc = String(cpf || "").replace(/\D/g, "");
 
     // 1) cliente: reaproveita se o CPF já existe, senão cria
