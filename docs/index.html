@@ -534,7 +534,7 @@ function renderChooseType(){
     <div class="tile ${S.barberType==='freelancer'?'sel':''}" data-a="type:freelancer">
       <div class="ic">${ICONS.user}</div><div><div class="nm">Sou freelancer</div><div class="tags">Trabalho por conta própria, recebo direto</div></div><div class="ar">&rsaquo;</div></div>
     <div class="tile ${S.barberType==='dono'?'sel':''}" data-a="type:dono">
-      <div class="ic">${ICONS.shop}</div><div><div class="nm">Sou dono de barbearia</div><div class="tags">Tenho equipe e gerencio comissões</div></div><div class="ar">&rsaquo;</div></div>`;
+      <div class="ic">${ICONS.shop}</div><div><div class="nm">Tenho studio</div><div class="tags">Tenho equipe e gerencio comissões</div></div><div class="ar">&rsaquo;</div></div>`;
 }
 
 /* ---------- Cadastro (onboarding Asaas) ---------- */
@@ -1597,7 +1597,7 @@ if(brand){
 }
 // "Minha conta": donos caem direto no painel administrativo da barbearia
 async function goMinhaConta(){
-  toggleMenu(false);
+  toggleMenu(false); S.afterAuth=null;
   if(!S.authEmail){ S.role="account"; S.accStage="home"; render(); return; }
   if(S.myShops===undefined || S.myShops===null){ await loadMyShops(); }
   if(S.myShops && S.myShops.length){ openDash(S.myShops[0].id); }
@@ -1636,7 +1636,7 @@ document.addEventListener("click", ()=> toggleMenu(false));
 menu.addEventListener("click", e=>{
   const t=e.target.closest("[data-m]"); if(!t) return;
   const m=t.dataset.m; toggleMenu(false);
-  if(m==="barber"){ if(!S.authEmail){ S.role="account"; S.accStage="signup"; } else { S.role="chooseType"; S.barberType=null; S.obStep=null; S.obDraft=null; } render(); }
+  if(m==="barber"){ if(!S.authEmail){ S.role="account"; S.accStage="signup"; S.afterAuth="chooseType"; } else { S.role="chooseType"; S.barberType=null; S.obStep=null; S.obDraft=null; } render(); }
   else if(m==="client"){ S.role="client"; S.step=1; S.barber=null; S.service=null; S.time=null; S.shop=null; hydrate(); }
   else if(m==="account"){ goMinhaConta(); }
 });
@@ -1646,7 +1646,7 @@ tabbar.addEventListener("click", e=>{ const t=e.target.closest(".tab"); if(!t)re
 const SB_URL="https://xprofyturjjhzjjjvgca.supabase.co";
 const SB_KEY="sb_publishable_y1y1j1gapNqt-7w5IMmyYg_M_Usm-7j";
 let sb=null; try{ sb = window.supabase.createClient(SB_URL, SB_KEY); }catch(e){}
-if(sb){ try{ refreshAuth(); sb.auth.onAuthStateChange(function(ev, session){ S.authEmail=(session&&session.user&&session.user.email)||""; S.myShops=undefined; S.myShopsPromise=null; if(ev==="SIGNED_IN" && S.loginPending){ S.loginPending=false; goMinhaConta(); } }); }catch(e){} }
+if(sb){ try{ refreshAuth(); sb.auth.onAuthStateChange(function(ev, session){ S.authEmail=(session&&session.user&&session.user.email)||""; S.myShops=undefined; S.myShopsPromise=null; if(ev==="SIGNED_IN" && S.loginPending){ S.loginPending=false; if(S.afterAuth==="chooseType"){ S.afterAuth=null; S.role="chooseType"; S.barberType=null; S.obStep=null; S.obDraft=null; render(); } else goMinhaConta(); } }); }catch(e){} }
 async function hydrate(){
   if(!sb){ S.shopLoad="erro: sem conexao"; render(); return; }
   S.shopLoad="loading"; render();
