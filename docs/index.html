@@ -78,6 +78,10 @@
   .dc-top{ font-size:13px; font-weight:700; text-transform:capitalize; }
   .dc-bot{ font-size:12px; opacity:.75; font-variant-numeric:tabular-nums; }
   .slots{ display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+  @media (max-width:480px){
+    .slots{ grid-template-columns:repeat(4,1fr); gap:8px; }
+    .slot{ padding:11px 0; font-size:14px; }
+  }
   .slot{ text-align:center; padding:15px 0; font-size:16px; font-weight:600; font-variant-numeric:tabular-nums; cursor:pointer;
     background:rgba(255,255,255,.55); border:1px solid rgba(255,255,255,.7); border-radius:16px; transition:.12s; }
   .slot:active{ transform:scale(.95); }
@@ -347,7 +351,11 @@ document.addEventListener("change", function(e){
     const data = c.toDataURL("image/jpeg", .82);
     try{ localStorage.setItem(avatarKey(scope), data); }catch(err){}
     // foto do studio também fica visível para o cliente no fluxo de agendamento
-    if(scope==="studio" && S.dashShop) setShopFoto(S.dashShop.id, data);
+    if(scope==="studio" && S.dashShop){
+      setShopFoto(S.dashShop.id, data);
+      // persiste no banco: sobrevive à limpeza do navegador e aparece em qualquer aparelho
+      try{ sb.from("shops").update({ foto:data }).eq("id", S.dashShop.id).then(function(r){ if(r&&r.error) console.log("foto no banco:", r.error.message); }); }catch(err){}
+    }
     URL.revokeObjectURL(img.src);
     // no cadastro, preserva o que já foi digitado antes de redesenhar
     if(S.role==="onboarding") obReadStep();
@@ -539,7 +547,7 @@ function renderClient(){
   }
   // foto da barbearia escolhida: ícone pequeno centralizado no topo dos passos
   if(S.shop){
-    const sf = getShopFoto(S.shop.id);
+    const sf = S.shop.foto || getShopFoto(S.shop.id);
     h+=`<div style="display:flex;justify-content:center;margin:2px 0 10px">${
       sf ? `<img src="${sf}" alt="" style="width:44px;height:44px;border-radius:50%;object-fit:cover">`
          : `<div class="av" style="width:44px;height:44px">${ini(S.shop.nome)}</div>`}</div>`;
@@ -585,7 +593,7 @@ function renderClient(){
       h+=`</div>`;
       if(slots.length && !temLivre) h+=`<div class="lr" style="justify-content:center;color:var(--mut);text-align:center;margin-top:10px">Nenhum horário livre neste dia. Escolha outro dia.</div>`;
       h+=`<div class="hint">${labelDia(S.dia).top} · ${S.service.nome} (${S.service.dur} min). Horários riscados estão indisponíveis.</div>`;
-      if(S.time!==null) h+=`<button class="btn" data-a="next">Agendar agora</button>`;
+      if(S.time!==null) h+=`<button class="btn" id="btnAgendar" data-a="next">Agendar agora</button>`;
     }
   }
   if(S.step===4 && !S.pixGen){
@@ -1582,6 +1590,7 @@ async function openDash(shopId){
   // garante que a foto do studio (aba Conta) fique vinculada à barbearia para o cliente ver
   const fotoStudio = getAvatar("studio");
   if(fotoStudio && !getShopFoto(sp.id)) setShopFoto(sp.id, fotoStudio);
+  if(fotoStudio && !sp.foto){ try{ sb.from("shops").update({ foto:fotoStudio }).eq("id", sp.id).then(function(){}); sp.foto=fotoStudio; }catch(e){} }
   S.role="barber"; S.tab="dash";
   render();
 }
@@ -1823,6 +1832,16 @@ function render(){
   else if(S.role==="account") renderAccount();
   else if(S.role==="admin") renderAdmin();
   else renderBarber();
+  // rola até o "Agendar agora" ao escolher um horário (iOS/Android)
+  if(S._scrollAgendar){
+    S._scrollAgendar=false;
+    requestAnimationFrame(function(){
+      const b=document.getElementById("btnAgendar");
+      if(!b) return;
+      try{ b.scrollIntoView({behavior:"smooth", block:"center"}); }
+      catch(e){ b.scrollIntoView(false); }
+    });
+  }
 }
 
 main.addEventListener("click", e=>{
@@ -1831,7 +1850,7 @@ main.addEventListener("click", e=>{
   if(a.startsWith("b:")){ S.barber=a.slice(2); S.step=2; }
   else if(a.startsWith("s:")){ S.service=services.find(s=>s.id===a.slice(2)); S.time=null; S.dia=null; S.step=3; }
   else if(a.startsWith("d:")){ S.dia=a.slice(2); S.time=null; }
-  else if(a.startsWith("t:")){ S.time=+a.slice(2); }
+  else if(a.startsWith("t:")){ S.time=+a.slice(2); S._scrollAgendar=true; }
   else if(a==="next"){ S.step=4; S.pixGen=false; }
   else if(a==="genpix"){
     const nome=document.getElementById("pgNome"), cpf=document.getElementById("pgCpf"), zap=document.getElementById("pgZap");
@@ -2068,7 +2087,7 @@ async function hydrate(){
     if(rShops.error){ S.shopLoad="erro: "+(rShops.error.message||JSON.stringify(rShops.error)); }
     else { S.shopLoad = (rShops.data && rShops.data.length) ? "ok" : "vazio"; }
     if(rShops.data){
-      barbershops = rShops.data.map(s=>({ id:s.id, nome:s.nome, bairro:s.bairro||'', lat:s.lat, lng:s.lng, tel:s.telefone||'',
+      barbershops = rShops.data.map(s=>({ id:s.id, nome:s.nome, bairro:s.bairro||'', lat:s.lat, lng:s.lng, tel:s.telefone||'', foto:s.foto||'',
         barbers: links.filter(l=>l.shop_id===s.id).map(l=>l.barber_id), slots:true, abre:s.abre, fecha:s.fecha, almocoIni:s.almoco_ini, almocoFim:s.almoco_fim, dias:s.dias }));
     }
     if(rBarbers.data && rBarbers.data.length){
