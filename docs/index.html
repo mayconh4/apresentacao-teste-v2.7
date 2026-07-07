@@ -291,6 +291,9 @@ function avatarHtml(scope, name, size){
 // chave/valor simples por conta logada (promoção, plano, etc.)
 function lsGet(k){ try{ return localStorage.getItem(k+"_"+(S.authEmail||"").toLowerCase())||""; }catch(e){ return ""; } }
 function lsSet(k,v){ try{ if(v===null||v==="") localStorage.removeItem(k+"_"+(S.authEmail||"").toLowerCase()); else localStorage.setItem(k+"_"+(S.authEmail||"").toLowerCase(), v); }catch(e){} }
+// foto da barbearia, por id da loja (o cliente vê no fluxo de agendamento)
+function getShopFoto(id){ try{ return localStorage.getItem("sb_shopfoto_"+id)||""; }catch(e){ return ""; } }
+function setShopFoto(id, data){ try{ localStorage.setItem("sb_shopfoto_"+id, data); }catch(e){} }
 // avatar de terceiros (equipe/rede): usa a foto do perfil se existir, senão iniciais
 function pAvatar(p, size){
   size = size||44;
@@ -311,7 +314,10 @@ document.addEventListener("change", function(e){
     const r = Math.max(s/img.width, s/img.height);
     const w = img.width*r, h2 = img.height*r;
     c.getContext("2d").drawImage(img, (s-w)/2, (s-h2)/2, w, h2);
-    try{ localStorage.setItem(avatarKey(scope), c.toDataURL("image/jpeg", .82)); }catch(err){}
+    const data = c.toDataURL("image/jpeg", .82);
+    try{ localStorage.setItem(avatarKey(scope), data); }catch(err){}
+    // foto do studio também fica visível para o cliente no fluxo de agendamento
+    if(scope==="studio" && S.dashShop) setShopFoto(S.dashShop.id, data);
     URL.revokeObjectURL(img.src); render();
   };
   img.src = URL.createObjectURL(f);
@@ -482,6 +488,13 @@ function renderClient(){
     });
     }
     main.innerHTML=h; return;
+  }
+  // foto da barbearia escolhida: ícone pequeno centralizado no topo dos passos
+  if(S.shop){
+    const sf = getShopFoto(S.shop.id);
+    h+=`<div style="display:flex;justify-content:center;margin:2px 0 10px">${
+      sf ? `<img src="${sf}" alt="" style="width:44px;height:44px;border-radius:50%;object-fit:cover">`
+         : `<div class="av" style="width:44px;height:44px">${ini(S.shop.nome)}</div>`}</div>`;
   }
   if(S.step===1){
     const shopBarbers = barbers.filter(b=> S.shop.barbers.includes(b.id));
