@@ -257,7 +257,7 @@ function acharMaisProxima(){
     let best=null,bd=Infinity;
     comSlots.forEach(s=>{ const d=distKm(la,lo,s.lat,s.lng); if(d<bd){bd=d;best=s;} });
     if(!best){ fb.textContent="Nenhuma barbearia com horários por perto agora."; return; }
-    best._dist=bd; S.shop=best; S.step=1; S.barber=null; S.service=null; S.time=null; render();
+    best._dist=bd; S.shop=best; S.step=1; S.barber=null; S.service=null; S.servSel=null; S.time=null; render();
   }, ()=>{ fb.textContent="Não consegui acessar sua localização. Permita o acesso ou escolha manualmente."; });
 }
 
@@ -698,11 +698,21 @@ function renderClient(){
     h+=`<div class="hint" style="text-align:center;cursor:pointer" data-a="trocashop">Trocar de barbearia</div>`;
   }
   if(S.step===2){
+    // seleção múltipla: o cliente pode marcar quantos serviços quiser
+    if(!S.servSel) S.servSel = (S.service && (S.service.ids || [S.service.id])) || [];
     h+=`<div class="eyebrow">${S.shop?S.shop.nome+" · ":""}Passo 2 de 4</div><h1>O que vamos fazer?</h1>`;
+    h+=`<div class="hint" style="margin-top:-10px;margin-bottom:10px">Toque para marcar — pode escolher mais de um serviço.</div>`;
     const icc={cabelo:ICONS.scissors,barba:ICONS.beard,estetica:ICONS.spray,sobrancelha:ICONS.eyebrow};
     const svcList = services.filter(function(x){ return !S.shop || !x.shop_id || x.shop_id===S.shop.id; });
     if(!svcList.length) h+=`<div class="lr" style="justify-content:center;color:var(--mut)">Esta barbearia ainda não cadastrou serviços.</div>`;
-    svcList.forEach(s=> h+=`<div class="tile ${S.service&&S.service.id===s.id?'sel':''}" data-a="s:${s.id}"><div class="ic">${icc[s.cat]||ICONS.scissors}</div><div><div class="nm">${s.nome}</div><div class="sb">${s.dur} minutos</div></div><div class="pr">${fmt(s.preco)}</div></div>`);
+    svcList.forEach(s=>{ const on=S.servSel.indexOf(s.id)>=0;
+      h+=`<div class="tile ${on?'sel':''}" data-a="s:${s.id}"><div class="ic">${icc[s.cat]||ICONS.scissors}</div><div><div class="nm">${s.nome}</div><div class="sb">${s.dur} minutos</div></div><div class="pr">${on?"✓ ":""}${fmt(s.preco)}</div></div>`; });
+    if(S.servSel.length){
+      const sel = svcList.filter(s=>S.servSel.indexOf(s.id)>=0);
+      const tot = sel.reduce((t,s)=>t+Number(s.preco||0),0), durTot = sel.reduce((t,s)=>t+Number(s.dur||0),0);
+      h+=`<div class="lr" style="margin-top:14px"><span class="c">${sel.length} serviço${sel.length>1?"s":""} · ${durTot} min</span><b>${fmt(tot)}</b></div>`;
+      h+=`<button class="btn" data-a="servCont">Continuar</button>`;
+    }
   }
   if(S.step===3){
     h+=`<div class="eyebrow">Passo 3 de 4</div><h1>Quando te espero?</h1>`;
@@ -2284,7 +2294,16 @@ main.addEventListener("click", e=>{
   const t=e.target.closest("[data-a]"); if(!t) return;
   const a=t.dataset.a;
   if(a.startsWith("b:")){ S.barber=a.slice(2); S.step=2; }
-  else if(a.startsWith("s:")){ S.service=services.find(s=>s.id===a.slice(2)); S.time=null; S.dia=null; S.step=3; }
+  else if(a.startsWith("s:")){ const sid=a.slice(2); if(!S.servSel) S.servSel=[]; const ix=S.servSel.indexOf(sid); if(ix>=0) S.servSel.splice(ix,1); else S.servSel.push(sid); S.service=null; }
+  else if(a==="servCont"){
+    const sel = services.filter(s=>S.servSel && S.servSel.indexOf(s.id)>=0);
+    if(!sel.length) return;
+    S.service = sel.length===1 ? sel[0] : {
+      id:"multi", ids: sel.map(s=>s.id), nome: sel.map(s=>s.nome).join(" + "), cat: sel[0].cat,
+      preco: sel.reduce((t,s)=>t+Number(s.preco||0),0), dur: sel.reduce((t,s)=>t+Number(s.dur||0),0)
+    };
+    S.time=null; S.dia=null; S.step=3;
+  }
   else if(a.startsWith("d:")){ S.dia=a.slice(2); S.time=null; }
   else if(a.startsWith("t:")){ S.time=+a.slice(2); S._scrollAgendar=true; }
   else if(a==="next"){ S.step=4; S.pixGen=false; }
@@ -2307,7 +2326,7 @@ main.addEventListener("click", e=>{
     if(!S.stars){ document.querySelector(".ratelabel").innerHTML='<span style="color:var(--cancel)">Escolha de 1 a 5 estrelas</span>'; return; }
     S.rated=true; render(); return;
   }
-  else if(a==="reset"){ clearInterval(pixPoll); clearPixPending(); S.pixCreated=null; S.step=1; S.barber=null; S.service=null; S.time=null; S.dia=null; S.pixGen=false; S.paid=false; S.payer=null; S.stars=0; S.rated=false; S.aguardandoPix=false; }
+  else if(a==="reset"){ clearInterval(pixPoll); clearPixPending(); S.pixCreated=null; S.step=1; S.barber=null; S.service=null; S.servSel=null; S.time=null; S.dia=null; S.pixGen=false; S.paid=false; S.payer=null; S.stars=0; S.rated=false; S.aguardandoPix=false; }
   else if(a==="save"){ saveOnboarding(); return; }
   else if(a==="obNext"){ obReadStep(); if(!obValidStep()) return; obGo(1); return; }
   else if(a==="obBack"){ obReadStep(); obGo(-1); return; }
@@ -2422,8 +2441,8 @@ main.addEventListener("click", e=>{
   else if(a.startsWith("admDia:")){ admEditRead(); const k=a.slice(7); const sp=S.editShop; if(sp){ if(!sp.dias) sp.dias=[]; const ix=sp.dias.indexOf(k); if(ix>=0) sp.dias.splice(ix,1); else sp.dias.push(k); render(); } return; }
   else if(a==="geo"){ acharMaisProxima(); return; }
   else if(a==="reload"){ hydrate(); return; }
-  else if(a.startsWith("shop:")){ S.shop=barbershops.find(s=>s.id===a.slice(5)); S.step=1; S.barber=null; S.service=null; S.time=null; }
-  else if(a==="trocashop"){ S.shop=null; S.step=1; S.barber=null; S.service=null; S.time=null; }
+  else if(a.startsWith("shop:")){ S.shop=barbershops.find(s=>s.id===a.slice(5)); S.step=1; S.barber=null; S.service=null; S.servSel=null; S.time=null; }
+  else if(a==="trocashop"){ S.shop=null; S.step=1; S.barber=null; S.service=null; S.servSel=null; S.time=null; }
   render();
 });
 
@@ -2440,7 +2459,7 @@ userBtn.addEventListener("click", e=>{ e.stopPropagation(); toggleMenu(); });
 function goHome(){
   toggleMenu(false);
   S.svcShop=null; S.svcList=null; S.barbShop=null; S.barbLinks=null; S.espEdit=null; S.editShop=null;
-  S.role="client"; S.step=1; S.shop=null; S.barber=null; S.service=null; S.time=null; S.dia=null;
+  S.role="client"; S.step=1; S.shop=null; S.barber=null; S.service=null; S.servSel=null; S.time=null; S.dia=null;
   S.pixGen=false; S.paid=false; S.payer=null; S.stars=0; S.rated=false;
   hydrate();
 }
@@ -2494,7 +2513,7 @@ function navBack(){
   if(S.role==="client"){
     if(S.pixGen){ S.pixGen=false; render(); return; }
     if(S.step>1){ S.step--; render(); return; }
-    if(S.shop){ S.shop=null; S.step=1; S.barber=null; S.service=null; S.time=null; S.dia=null; render(); return; }
+    if(S.shop){ S.shop=null; S.step=1; S.barber=null; S.service=null; S.servSel=null; S.time=null; S.dia=null; render(); return; }
   }
 }
 function updateBack(){ const b=document.getElementById("backBtn"); if(b) b.style.display = canBack() ? "flex" : "none"; }
@@ -2505,7 +2524,7 @@ menu.addEventListener("click", e=>{
   const t=e.target.closest("[data-m]"); if(!t) return;
   const m=t.dataset.m; toggleMenu(false);
   if(m==="barber"){ if(!S.authEmail){ S.role="account"; S.accStage="signup"; S.afterAuth="chooseType"; } else { S.role="chooseType"; S.barberType=null; S.obStep=null; S.obDraft=null; } render(); }
-  else if(m==="client"){ S.role="client"; S.step=1; S.barber=null; S.service=null; S.time=null; S.shop=null; hydrate(); }
+  else if(m==="client"){ S.role="client"; S.step=1; S.barber=null; S.service=null; S.servSel=null; S.time=null; S.shop=null; hydrate(); }
   else if(m==="meusag"){ abrirMeusAg(); }
   else if(m==="account"){ goMinhaConta(); }
 });
