@@ -801,6 +801,13 @@ function confirmarPagamento(){
   const nomeCli = (S.payer&&S.payer.nome)||"Você";
   const pvPay = precoCliente();
   appointments.push({ id:"new", barbeiro:S.barber==="any"?"b1":S.barber, cliente:nomeCli, service:S.service.id, min:S.time, dia:S.dia, valor:pvPay.final, status:"pago" });
+  // grava o agendamento na nuvem + cópia local, ligado ao WhatsApp do cliente
+  salvarAgendamento({
+    shop_id: (S.shop && String(S.shop.id).length>20) ? S.shop.id : null,
+    barbearia: S.shop ? S.shop.nome : "", barbeiro: S.barber==="any" ? "" : (((barbers.find(x=>x.id===S.barber)||{}).nome)||""),
+    cliente_nome: nomeCli, cliente_zap: zapKey(S.payer && S.payer.zap),
+    servico: S.service.nome, preco: pvPay.final, dia: S.dia, minuto: S.time, status: "pago"
+  });
   // o desconto vale para um corte: consumido após o pagamento
   if(pvPay.pct){ const alvo=nomeCli.trim().toLowerCase(); Object.keys(descontos).forEach(n=>{ if(n.trim().toLowerCase()===alvo) delete descontos[n]; }); saveDescontos(); }
   let c=(fidelidade[nomeCli]||0); c = (c%10===0 && c>0) ? 1 : c+1; fidelidade[nomeCli]=c;
@@ -809,7 +816,7 @@ function confirmarPagamento(){
   const waBtn = wa ? `<a class="btn" href="${wa}" target="_blank" rel="noopener" style="display:block;text-align:center;text-decoration:none;background:linear-gradient(135deg,#25d366,#1da851);color:#fff;border-color:#1da851;margin-top:14px">Avisar a barbearia no WhatsApp</a>` : "";
   const extra = wa ? " Toque no botão verde para avisar a barbearia pelo WhatsApp." : "";
   const box = document.getElementById("paybox");
-  if(box) box.innerHTML=`<div class="ok"><b>Pagamento confirmado</b><p>Seu horário está reservado.${extra} Após o corte, avalie o atendimento.</p></div>${waBtn}<button class="btn out" data-a="rate" style="margin-top:12px">Avaliar atendimento</button><button class="btn out" data-a="reset">Novo agendamento</button>`;
+  if(box) box.innerHTML=`<div class="ok"><b>Pagamento confirmado</b><p>Seu horário está reservado.${extra} Após o corte, avalie o atendimento.</p></div>${waBtn}<button class="btn out" data-a="meusag" style="margin-top:12px">Ver meus agendamentos</button><button class="btn out" data-a="rate">Avaliar atendimento</button><button class="btn out" data-a="reset">Novo agendamento</button>`;
 }
 // copia o código PIX e mostra o carregamento até o Asaas confirmar o pagamento
 function copiarPix(){
@@ -1290,6 +1297,60 @@ async function doSignup(){
 }
 async function accLogout(){ try{ await sb.auth.signOut(); }catch(e){} S.authEmail=""; S.myShops=undefined; S.myShopsPromise=null; S.accStage="home"; goHome(); }
 
+/* ---------- Meus agendamentos (cliente, identificado pelo WhatsApp) ---------- */
+function zapKey(v){ let d=String(v||"").replace(/\D/g,""); if(d.length>11 && d.slice(0,2)==="55") d=d.slice(2); return d; }
+function meusAgLocais(){ try{ return JSON.parse(localStorage.getItem("sb_meus_ag")||"[]"); }catch(e){ return []; } }
+async function salvarAgendamento(ag){
+  // cópia local primeiro: o cliente vê o horário mesmo se a nuvem falhar
+  try{ const l=meusAgLocais(); l.push(ag); localStorage.setItem("sb_meus_ag", JSON.stringify(l.slice(-50))); }catch(e){}
+  try{ if(ag.cliente_zap) localStorage.setItem("sb_cliente_zap", ag.cliente_zap); }catch(e){}
+  try{ const r = await sb.from("appointments").insert(ag); if(r.error) console.log("agendamento (nuvem) erro:", r.error); }
+  catch(e){ console.log("agendamento (nuvem) excecao:", e); }
+}
+function abrirMeusAg(){
+  S.role="meusag"; S.agList=undefined;
+  let zap=""; try{ zap=localStorage.getItem("sb_cliente_zap")||""; }catch(e){}
+  S.agZap = zap;
+  render();
+  if(zapKey(zap)) buscarMeusAg(zap);
+}
+async function buscarMeusAg(zap){
+  const key = zapKey(zap);
+  if(!key){ const el=document.getElementById("agZap"); if(el){ el.classList.add("err"); el.focus(); } return; }
+  S.agZap = zap;
+  try{ localStorage.setItem("sb_cliente_zap", key); }catch(e){}
+  S.agList = null; render();
+  let remotos = [];
+  try{ const { data, error } = await sb.from("appointments").select("*").eq("cliente_zap", key); if(!error && data) remotos = data; }catch(e){}
+  const locais = meusAgLocais().filter(function(a){ return zapKey(a.cliente_zap)===key; });
+  const chave = function(a){ return (a.dia||"")+"|"+a.minuto+"|"+(a.servico||""); };
+  const vistos = {}, tudo = [];
+  remotos.concat(locais).forEach(function(a){ const k=chave(a); if(vistos[k]) return; vistos[k]=1; tudo.push(a); });
+  tudo.sort(function(a,b){ return (b.dia||"").localeCompare(a.dia||"") || (b.minuto||0)-(a.minuto||0); });
+  S.agList = tudo;
+  if(S.role==="meusag") render();
+}
+function agCardHtml(a){
+  const l = a.dia ? labelDia(a.dia) : null;
+  const quando = (l ? l.top+" "+l.bot : "") + (a.minuto!=null ? " · "+hhmm(a.minuto) : "");
+  const st = a.status==="pago" ? `<span class="chip ok">Pago</span>` : `<span class="chip" style="background:rgba(255,159,10,.2);color:#a86400">${a.status||"—"}</span>`;
+  return `<div class="box" style="margin-bottom:10px"><div style="display:flex;align-items:center;gap:10px"><div style="flex:1"><div class="nm" style="font-size:15px">${a.servico||"Serviço"}</div><div class="sb">${quando}</div><div class="sb">${a.barbearia||""}${a.barbeiro?" · "+a.barbeiro:""}</div></div><div style="text-align:right">${st}<div class="sb" style="margin-top:6px">${a.preco!=null?fmt(Number(a.preco)):""}</div></div></div></div>`;
+}
+function renderMeusAg(){
+  tabbar.style.display="none"; steps.style.display="none";
+  let h = `<div class="eyebrow">Cliente</div><h1 class="bg">Meus agendamentos</h1>
+    <div class="hint" style="margin-top:-6px;margin-bottom:12px">Seus horários ficam ligados ao WhatsApp usado na hora de agendar.</div>`;
+  h += `<div style="display:flex;gap:8px;align-items:stretch;margin-bottom:14px"><div class="field" style="flex:1;margin:0"><input id="agZap" type="tel" placeholder="(11) 99999-9999" value="${S.agZap||""}"></div><button class="btn out small" data-a="agBuscar" style="white-space:nowrap">Buscar</button></div>`;
+  if(S.agList===null){
+    h += `<div class="lr" style="justify-content:center;color:var(--mut)">Carregando…</div>`;
+  } else if(Array.isArray(S.agList)){
+    if(!S.agList.length) h += `<div class="lr" style="justify-content:center;color:var(--mut)">Nenhum agendamento encontrado para este número.</div>`;
+    else S.agList.forEach(function(a){ h += agCardHtml(a); });
+  }
+  h += `<button class="btn" data-a="toClient" style="margin-top:14px">Agendar novo horário</button>`;
+  main.innerHTML = h;
+}
+
 /* ---------- Painel do cliente (Minha conta · perfil cliente) ---------- */
 function cnameKey(){ return "sb_cname_"+(S.authEmail||"").toLowerCase(); }
 function getCName(){ try{ return localStorage.getItem(cnameKey())||""; }catch(e){ return ""; } }
@@ -1322,14 +1383,13 @@ function renderClientPanel(){
       <div class="fidwrap" style="border:none;padding:0;margin:0"><div class="fid">${segs}</div><span class="fidlbl">${filled}/10</span></div>
       <div class="boxtxt" style="margin-top:8px">${filled===0?'Complete 10 cortes e o próximo é grátis.':'Faltam <b>'+faltam+'</b> corte'+(faltam===1?'':'s')+' para o seu corte grátis!'}</div>
     </div>`;
-  // agendamentos do cliente
-  const meus = appointments.filter(a=>a.cliente===nome && a.status!=="cancelado");
+  // agendamentos do cliente (persistidos, ligados ao WhatsApp usado na compra)
+  let zapSalvo=""; try{ zapSalvo=localStorage.getItem("sb_cliente_zap")||""; }catch(e){}
+  const meus = meusAgLocais().filter(a=>!zapSalvo || zapKey(a.cliente_zap)===zapKey(zapSalvo)).slice(-5).reverse();
   h += `<div class="eyebrow" style="margin:8px 0 10px">Meus agendamentos</div>`;
   if(!meus.length) h += `<div class="lr" style="justify-content:center;color:var(--mut)">Nenhum agendamento por enquanto.</div><button class="btn" data-a="cpAgendar" style="margin-top:10px">Agendar um corte</button>`;
-  else meus.forEach(a=>{
-    const s=services.find(x=>x.id===a.service)||{nome:"Serviço"};
-    h += `<div class="lr"><div><b>${hhmm(a.min)}</b> · ${s.nome}</div><span class="c">${fmt(a.valor)}</span></div>`;
-  });
+  else meus.forEach(a=>{ h += agCardHtml(a); });
+  h += `<button class="btn out" data-a="meusag" style="margin-top:10px">Ver todos (buscar pelo WhatsApp)</button>`;
   h += `<button class="btn out" data-a="accLogout" style="margin-top:18px">Sair</button>`;
   main.innerHTML = h;
 }
@@ -2206,6 +2266,7 @@ function render(){
   else if(S.role==="cadastroEnviado") renderCadastroEnviado();
   else if(S.role==="account") renderAccount();
   else if(S.role==="admin") renderAdmin();
+  else if(S.role==="meusag") renderMeusAg();
   else renderBarber();
   // rola até o "Agendar agora" ao escolher um horário (iOS/Android)
   if(S._scrollAgendar){
@@ -2292,6 +2353,8 @@ main.addEventListener("click", e=>{
   else if(a==="toOnboard"){ S.role = S.barberType ? "onboarding" : "chooseType"; S.obStep=null; S.obDraft=null; }
   else if(a==="toDash"){ S.role="barber"; S.tab="dash"; }
   else if(a==="toClient"){ S.role="client"; S.step=1; S.shop=null; hydrate(); }
+  else if(a==="meusag"){ abrirMeusAg(); return; }
+  else if(a==="agBuscar"){ const el=document.getElementById("agZap"); buscarMeusAg(el?el.value:""); return; }
   else if(a==="toMinhaConta"){ S.role="account"; S.accStage="home"; S.myShops=undefined; render(); return; }
   else if(a.startsWith("dash:")){ openDash(a.slice(5)); return; }
   else if(a==="accLogin"){ S.accStage="login"; render(); return; }
@@ -2366,9 +2429,10 @@ main.addEventListener("click", e=>{
 
 const menu = document.getElementById("menu");
 const userBtn = document.getElementById("userBtn");
-const I = { scissors:ICONS.scissors, user:ICONS.user, cut:ICONS.combo };
+const I = { scissors:ICONS.scissors, user:ICONS.user, cut:ICONS.combo,
+  clock:`<svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm1 10.4 4.2 2.5-.8 1.4L11 13V6h2v6.4Z"/></svg>` };
 function buildMenu(){
-  menu.innerHTML = `<div class="mi" data-m="account">${I.user} Minha conta</div>`;
+  menu.innerHTML = `<div class="mi" data-m="meusag">${I.clock} Meus agendamentos</div><div class="sep"></div><div class="mi" data-m="account">${I.user} Minha conta</div>`;
 }
 function toggleMenu(open){ const show = open===undefined ? menu.hidden : open; if(show){ buildMenu(); menu.hidden=false; } else menu.hidden=true; }
 userBtn.addEventListener("click", e=>{ e.stopPropagation(); toggleMenu(); });
@@ -2409,7 +2473,7 @@ async function routeByPerfil(tab){
 // Seta de voltar no cabeçalho — só aparece onde há para onde voltar
 function canBack(){
   if(S.svcShop||S.barbShop||S.editShop||S.espEdit) return true;
-  if(S.role==="onboarding"||S.role==="chooseType"||S.role==="cadastroEnviado"||S.role==="admin"||S.role==="barber"||S.role==="clientPanel") return true;
+  if(S.role==="onboarding"||S.role==="chooseType"||S.role==="cadastroEnviado"||S.role==="admin"||S.role==="barber"||S.role==="clientPanel"||S.role==="meusag") return true;
   if(S.role==="account") return true;
   if(S.role==="client") return !!(S.shop || S.pixGen);
   return false;
@@ -2425,6 +2489,7 @@ function navBack(){
   if(S.role==="cadastroEnviado"){ S.role="client"; S.step=1; S.shop=null; render(); return; }
   if(S.role==="admin"){ S.role="account"; S.accStage="home"; render(); return; }
   if(S.role==="barber"||S.role==="clientPanel"){ goHome(); return; }
+  if(S.role==="meusag"){ S.role="client"; render(); return; }
   if(S.role==="account"){ if(S.accStage==="login"||S.accStage==="signup"){ S.accStage="home"; render(); } else { S.role="client"; render(); } return; }
   if(S.role==="client"){
     if(S.pixGen){ S.pixGen=false; render(); return; }
@@ -2441,6 +2506,7 @@ menu.addEventListener("click", e=>{
   const m=t.dataset.m; toggleMenu(false);
   if(m==="barber"){ if(!S.authEmail){ S.role="account"; S.accStage="signup"; S.afterAuth="chooseType"; } else { S.role="chooseType"; S.barberType=null; S.obStep=null; S.obDraft=null; } render(); }
   else if(m==="client"){ S.role="client"; S.step=1; S.barber=null; S.service=null; S.time=null; S.shop=null; hydrate(); }
+  else if(m==="meusag"){ abrirMeusAg(); }
   else if(m==="account"){ goMinhaConta(); }
 });
 tabbar.addEventListener("click", e=>{ const t=e.target.closest(".tab"); if(!t)return; S.tab=t.dataset.tab; render(); });
