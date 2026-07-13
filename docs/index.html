@@ -257,7 +257,7 @@ function acharMaisProxima(){
     let best=null,bd=Infinity;
     comSlots.forEach(s=>{ const d=distKm(la,lo,s.lat,s.lng); if(d<bd){bd=d;best=s;} });
     if(!best){ fb.textContent="Nenhuma barbearia com horários por perto agora."; return; }
-    best._dist=bd; S.shop=best; S.step=1; S.barber=null; S.service=null; S.servSel=null; S.time=null; render();
+    best._dist=bd; S.shop=best; S.step=1; S.barber=null; S.service=null; S.servSel=null; S.time=null; S.shopAgenda=undefined; render();
   }, ()=>{ fb.textContent="Não consegui acessar sua localização. Permita o acesso ou escolha manualmente."; });
 }
 
@@ -586,10 +586,11 @@ const ICONS = {
 
 // Retorna TODOS os horários do dia com o status de cada um.
 // { m: minutos, ok: disponível?, motivo: 'passou' | 'almoco' | 'ocupado' | '' }
-function slotsStatus(barbeiroId, dur, passo, hor, minMin){
+function slotsStatus(barbeiroId, dur, passo, hor, minMin, extraOcup){
   passo = passo||30; hor = hor||horario; minMin = minMin||0;
   const ocup = appointments.filter(a => (barbeiroId==="any"||a.barbeiro===barbeiroId) && a.status!=="cancelado")
-    .map(a => ({ ini:a.min, fim:a.min + (services.find(s=>s.id===a.service)?.dur||30) }));
+    .map(a => ({ ini:a.min, fim:a.min + (services.find(s=>s.id===a.service)?.dur||30) }))
+    .concat(extraOcup||[]);   // + agendamentos reais da barbearia (nuvem/local)
   const out=[];
   for(let m=hor.abre*60; m+dur<=hor.fecha*60; m+=passo){
     const fim=m+dur; let ok=true, motivo="";
@@ -729,7 +730,10 @@ function renderClient(){
       const shor = (S.shop && S.shop.abre!=null) ? {abre:S.shop.abre, fecha:S.shop.fecha, almocoIni:S.shop.almocoIni, almocoFim:S.shop.almocoFim} : horario;
       let minMin = 0;
       if(S.dia===isoDia(new Date())){ const agora=new Date(); minMin = agora.getHours()*60 + agora.getMinutes(); }
-      const slots = slotsStatus(S.barber, S.service.dur, 30, shor, minMin);
+      // carrega os agendamentos reais da barbearia (uma vez) para bloquear os horários já ocupados
+      if(S.shopAgenda===undefined && S.shop){ S.shopAgenda=null; loadShopAgenda(S.shop); }
+      const chosenName = S.barber==="any" ? null : ((barbers.find(function(x){ return x.id===S.barber; })||{}).nome||"");
+      const slots = slotsStatus(S.barber, S.service.dur, 30, shor, minMin, ocupDoDia(S.dia, chosenName));
       const temLivre = slots.some(function(s){ return s.ok; });
       const motivoTxt = { passou:"Horário já passou", almoco:"Intervalo de almoço", ocupado:"Horário ocupado" };
       h+=`<div class="sllbl" style="margin:16px 0 8px">Escolha o horário</div><div class="slots">`;
@@ -818,6 +822,7 @@ function confirmarPagamento(){
     cliente_nome: nomeCli, cliente_zap: zapKey(S.payer && S.payer.zap),
     servico: S.service.nome, preco: pvPay.final, dia: S.dia, minuto: S.time, status: "pago"
   });
+  S.shopAgenda = undefined;   // recarrega a agenda da barbearia (o horário recém-reservado passa a bloquear)
   // o desconto vale para um corte: consumido após o pagamento
   if(pvPay.pct){ const alvo=nomeCli.trim().toLowerCase(); Object.keys(descontos).forEach(n=>{ if(n.trim().toLowerCase()===alvo) delete descontos[n]; }); saveDescontos(); }
   let c=(fidelidade[nomeCli]||0); c = (c%10===0 && c>0) ? 1 : c+1; fidelidade[nomeCli]=c;
@@ -1335,6 +1340,39 @@ async function salvarAgendamento(ag){
   try{ const r = await sb.from("appointments").insert(ag); if(r.error) console.log("agendamento (nuvem) erro:", r.error); }
   catch(e){ console.log("agendamento (nuvem) excecao:", e); }
 }
+// duração de um agendamento (soma serviços combinados "A + B"); usada para bloquear horários
+function apptDur(nome){
+  if(!nome) return 30;
+  const total = String(nome).split(" + ").reduce(function(t,part){ const s=services.find(function(x){ return x.nome===part.trim(); }); return t + (s?Number(s.dur||30):30); }, 0);
+  return total || 30;
+}
+// carrega os agendamentos de uma barbearia (nuvem + cópia local) p/ bloquear horários e mostrar na agenda
+async function loadShopAgenda(shop){
+  if(!shop) return;
+  const nome = shop.nome, id = shop.id, uuid = String(id||"").length>=20;
+  let cloud=[];
+  try{
+    let q = sb.from("appointments").select("*");
+    q = uuid ? q.eq("shop_id", id) : q.eq("barbearia", nome);
+    const { data, error } = await q;
+    if(!error && data) cloud = data;
+  }catch(e){}
+  const locais = meusAgLocais().filter(function(a){ return uuid ? a.shop_id===id : a.barbearia===nome; });
+  const seen={}, all=[];
+  cloud.concat(locais).forEach(function(a){ const k=(a.dia||"")+"|"+a.minuto+"|"+(a.servico||""); if(seen[k]) return; seen[k]=1; all.push(a); });
+  S.shopAgenda = all;
+  // só re-renderiza onde a agenda está de fato à vista (evita apagar o aviso de "Barbearia cadastrada")
+  if(S.role==="client" && S.step===3) render();
+  if(S.role==="barber" && S.tab==="agenda") render();
+}
+// ocupação (intervalos) da barbearia num dia, para o barbeiro escolhido (ou qualquer)
+function ocupDoDia(dia, barbeiroNome){
+  return (S.shopAgenda||[]).filter(function(a){
+    if(a.dia!==dia || a.status==="cancelado") return false;
+    if(!barbeiroNome) return true;                       // "qualquer": toda ocupação conta
+    return !a.barbeiro || a.barbeiro===barbeiroNome;     // específico: os dele + os sem barbeiro definido
+  }).map(function(a){ return { ini:Number(a.minuto), fim:Number(a.minuto)+apptDur(a.servico) }; });
+}
 function abrirMeusAg(){
   S.role="meusag"; S.agList=undefined;
   let zap=""; try{ zap=localStorage.getItem("sb_cliente_zap")||""; }catch(e){}
@@ -1539,11 +1577,37 @@ function renderBarber(){
       </div>`;
   }
   if(S.tab==="agenda"){
-    h+=`<div class="eyebrow">Hoje</div><h1 class="bg">Agenda</h1>`;
+    h+=`<div class="eyebrow">Barbearia</div><h1 class="bg">Agenda</h1>`;
+    // Agenda REAL desta barbearia (agendamentos vinculados via nuvem/local)
+    const stBg={pago:"rgba(52,199,89,.18)",aguardando:"rgba(255,159,10,.2)",cancelado:"rgba(255,69,58,.18)"};
+    const stFg={pago:"#1f8f3e",aguardando:"#a86400",cancelado:"#c0271f"};
+    const stLab={pago:"Pago",aguardando:"Aguarda",cancelado:"Cancelado"};
+    const ags = (S.shopAgenda||[]).slice().filter(a=>a.status!=="cancelado").sort((a,b)=> (a.dia||"").localeCompare(b.dia||"") || (Number(a.minuto)-Number(b.minuto)));
+    const temReal = Array.isArray(S.shopAgenda) && ags.length;
+    if(S.shopAgenda===null || S.shopAgenda===undefined){
+      h+=`<div class="lr" style="justify-content:center;color:var(--mut)"><span class="spin" style="margin-right:8px"></span>Carregando agenda…</div>`;
+    } else if(!ags.length){
+      h+=`<div class="lr" style="justify-content:center;color:var(--mut)">Nenhum agendamento ainda.</div>`;
+    } else {
+      let curDia="";
+      ags.forEach(function(a){
+        if(a.dia!==curDia){ curDia=a.dia; const l=a.dia?labelDia(a.dia):null; h+=`<div class="sllbl" style="margin:16px 0 8px">${l?l.top+" · "+l.bot:(a.dia||"")}</div>`; }
+        const zap=zapKey(a.cliente_zap);
+        const waMsg=encodeURIComponent(`Olá ${a.cliente_nome||''}! Aqui é da ${profile?(profile.nomeFantasia||'barbearia'):'barbearia'} 💈 Sobre o seu horário de ${hhmm(a.minuto)}.`);
+        const waBtn=zap?`<a class="wabtn" href="https://wa.me/55${zap}?text=${waMsg}" target="_blank" rel="noopener"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-8.6 15l-1.3 4.7 4.8-1.3A10 10 0 1 0 12 2zm5.9 14.3c-.2.7-1.4 1.3-2 1.4-.5.1-1.2.1-1.9-.1-.4-.1-1-.3-1.7-.6-3-1.3-4.9-4.3-5-4.5-.2-.2-1.2-1.6-1.2-3s.7-2.1 1-2.4c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.5l.8 2c.1.1.1.3 0 .5l-.4.5-.3.3c-.2.2-.3.4-.2.6.2.4.8 1.3 1.6 2 .9.9 1.7 1.1 2 1.3.2.1.4.1.6-.1l.7-.9c.2-.2.4-.2.6-.1l1.9.9c.3.1.4.2.5.3.1.2.1.7-.1 1.3z"/></svg>WhatsApp</a>`:"";
+        h+=`<div class="ag" style="flex-direction:column;align-items:stretch;gap:10px">
+          <div style="display:flex;align-items:center;gap:14px">
+            <div class="hm">${hhmm(a.minuto)}</div>
+            <div style="flex:1"><div class="who">${a.cliente_nome||'Cliente'}</div><div class="sv">${a.servico||'Serviço'}${a.barbeiro?' · '+a.barbeiro:''} · ${fmt(Number(a.preco||0))}</div></div>
+            <div class="chip" style="background:${stBg[a.status]||stBg.pago};color:${stFg[a.status]||stFg.pago}">${stLab[a.status]||a.status||''}</div>
+          </div>${waBtn?`<div class="fidwrap" style="border-top-color:rgba(0,0,0,.05);justify-content:flex-end">${waBtn}</div>`:""}
+        </div>`;
+      });
+    }
     const lab={pago:"Pago",aguardando:"Aguarda",cancelado:"Cancelado"};
     const bg={pago:"rgba(52,199,89,.18)",aguardando:"rgba(255,159,10,.2)",cancelado:"rgba(255,69,58,.18)"};
     const fg={pago:"#1f8f3e",aguardando:"#a86400",cancelado:"#c0271f"};
-    list.slice().sort((a,b)=>a.min-b.min).forEach(a=>{
+    (temReal ? [] : list).slice().sort((a,b)=>a.min-b.min).forEach(a=>{
       const s=services.find(x=>x.id===a.service) || {nome:"Serviço"};
       const cortes = fidelidade[a.cliente]||0;
       const free = cortes>0 && cortes%10===0;
@@ -2032,6 +2096,7 @@ async function openDash(shopId){
   if(fotoStudio && !getShopFoto(sp.id)) setShopFoto(sp.id, fotoStudio);
   if(fotoStudio && !sp.foto){ try{ sb.from("shops").update({ foto:fotoStudio }).eq("id", sp.id).then(function(){}); sp.foto=fotoStudio; }catch(e){} }
   S.role="barber"; S.tab="dash";
+  S.shopAgenda=undefined; loadShopAgenda(sp);   // agenda real desta barbearia
   render();
 }
 
@@ -2467,8 +2532,8 @@ main.addEventListener("click", e=>{
   else if(a.startsWith("admDia:")){ admEditRead(); const k=a.slice(7); const sp=S.editShop; if(sp){ if(!sp.dias) sp.dias=[]; const ix=sp.dias.indexOf(k); if(ix>=0) sp.dias.splice(ix,1); else sp.dias.push(k); render(); } return; }
   else if(a==="geo"){ acharMaisProxima(); return; }
   else if(a==="reload"){ hydrate(); return; }
-  else if(a.startsWith("shop:")){ S.shop=barbershops.find(s=>s.id===a.slice(5)); S.step=1; S.barber=null; S.service=null; S.servSel=null; S.time=null; }
-  else if(a==="trocashop"){ S.shop=null; S.step=1; S.barber=null; S.service=null; S.servSel=null; S.time=null; }
+  else if(a.startsWith("shop:")){ S.shop=barbershops.find(s=>s.id===a.slice(5)); S.step=1; S.barber=null; S.service=null; S.servSel=null; S.time=null; S.shopAgenda=undefined; }
+  else if(a==="trocashop"){ S.shop=null; S.step=1; S.barber=null; S.service=null; S.servSel=null; S.time=null; S.shopAgenda=undefined; }
   render();
 });
 
