@@ -711,7 +711,7 @@ function renderClient(){
       const sel = svcList.filter(s=>S.servSel.indexOf(s.id)>=0);
       const tot = sel.reduce((t,s)=>t+Number(s.preco||0),0), durTot = sel.reduce((t,s)=>t+Number(s.dur||0),0);
       h+=`<div class="lr" style="margin-top:14px"><span class="c">${sel.length} serviço${sel.length>1?"s":""} · ${durTot} min</span><b>${fmt(tot)}</b></div>`;
-      h+=`<button class="btn" data-a="servCont">Continuar</button>`;
+      h+=`<button class="btn" id="btnServCont" data-a="servCont">Continuar</button>`;
     }
   }
   if(S.step===3){
@@ -2304,13 +2304,23 @@ function render(){
       catch(e){ b.scrollIntoView(false); }
     });
   }
+  // rola até o "Continuar" ao escolher um serviço no passo 2
+  if(S._scrollServ){
+    S._scrollServ=false;
+    requestAnimationFrame(function(){
+      const b=document.getElementById("btnServCont");
+      if(!b) return;
+      try{ b.scrollIntoView({behavior:"smooth", block:"center"}); }
+      catch(e){ b.scrollIntoView(false); }
+    });
+  }
 }
 
 main.addEventListener("click", e=>{
   const t=e.target.closest("[data-a]"); if(!t) return;
   const a=t.dataset.a;
   if(a.startsWith("b:")){ S.barber=a.slice(2); S.step=2; }
-  else if(a.startsWith("s:")){ const sid=a.slice(2); if(!S.servSel) S.servSel=[]; const ix=S.servSel.indexOf(sid); if(ix>=0) S.servSel.splice(ix,1); else S.servSel.push(sid); S.service=null; }
+  else if(a.startsWith("s:")){ const sid=a.slice(2); if(!S.servSel) S.servSel=[]; const ix=S.servSel.indexOf(sid); if(ix>=0) S.servSel.splice(ix,1); else S.servSel.push(sid); S.service=null; if(S.servSel.length) S._scrollServ=true; }
   else if(a==="servCont"){
     const sel = services.filter(s=>S.servSel && S.servSel.indexOf(s.id)>=0);
     if(!sel.length) return;
