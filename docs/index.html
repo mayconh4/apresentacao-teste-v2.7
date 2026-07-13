@@ -347,7 +347,7 @@ function shopGeo(shopId){
     const lat=pos.coords.latitude, lng=pos.coords.longitude;
     try{
       const { error } = await sb.from("shops").update({ lat, lng }).eq("id", shopId);
-      if(error){ if(msg) msg.textContent="Não deu para salvar: "+(error.message||"erro"); return; }
+      if(error){ if(msg) msg.textContent="Não deu para salvar: "+traduzErro(error.message||"erro"); return; }
       (S.myShops||[]).forEach(function(sp){ if(sp.id===shopId){ sp.lat=lat; sp.lng=lng; } });
       if(S.dashShop && S.dashShop.id===shopId){ S.dashShop.lat=lat; S.dashShop.lng=lng; }
       render();
@@ -1188,7 +1188,7 @@ async function saveOnboarding(){
         dias: d.dias||[]
       }).select("id").single();
       ok = !error && !!shopRow;
-      if(error){ console.log("cadastro erro:", error); S.cadastroErro = error.message || String(error); }
+      if(error){ console.log("cadastro erro:", error); S.cadastroErro = traduzErro(error.message || String(error)); }
       else if(shopRow) newShopId = shopRow.id;
     }catch(e){ console.log("cadastro excecao:", e); S.cadastroErro = (e&&e.message)||String(e); }
   }
@@ -1284,13 +1284,30 @@ function renderAccount(){
 }
 async function refreshAuth(){ try{ const {data}=await sb.auth.getSession(); S.authEmail = data&&data.session&&data.session.user ? (data.session.user.email||"") : ""; }catch(e){ S.authEmail=""; } }
 function accCreds(){ const e=document.getElementById("accEmail"), p=document.getElementById("accPass"); return { email:(e?e.value.trim().toLowerCase():""), pass:(p?p.value:""), e, p }; }
+// Traduz mensagens de erro do backend (Supabase/Postgres, em inglês) para português
+function traduzErro(raw){
+  const m = String(raw||"").toLowerCase();
+  if(/user already registered|already been registered|already exists.*user|duplicate.*email/.test(m)) return "Este e-mail já tem uma conta. Toque em “Acessar” para entrar.";
+  if(/invalid login credentials|invalid credentials/.test(m)) return "E-mail ou senha inválidos.";
+  if(/email not confirmed/.test(m)) return "Confirme seu e-mail antes de entrar (verifique sua caixa de entrada).";
+  if(/password should be at least|password.*6/.test(m)) return "A senha precisa ter ao menos 6 caracteres.";
+  if(/unable to validate email|invalid email|email.*invalid/.test(m)) return "E-mail inválido.";
+  if(/rate limit|too many requests|for security purposes/.test(m)) return "Muitas tentativas. Aguarde alguns instantes e tente de novo.";
+  if(/row-level security|permission denied|violates row-level/.test(m)) return "Sem permissão para gravar (políticas de acesso do banco).";
+  if(/column .* does not exist|could not find the .* column/.test(m)) return "Falta uma coluna no banco de dados. Fale com o administrador.";
+  if(/duplicate key|already exists/.test(m)) return "Este registro já existe.";
+  if(/network|failed to fetch|load failed|timeout|tempo esgotado/.test(m)) return "Falha de conexão. Verifique a internet e tente de novo.";
+  if(/not-null|null value in column/.test(m)) return "Preencha todos os campos obrigatórios.";
+  if(/user not found/.test(m)) return "Conta não encontrada.";
+  return raw || "Ocorreu um erro. Tente novamente.";
+}
 function accErr(msg){ const el=document.getElementById("accerr"); if(el) el.innerHTML=`<div class="errmsg">${msg}</div>`; }
 async function doLogin(){
   const {email,pass,e,p}=accCreds();
   if(!email){ if(e)e.classList.add("err"); return; } if(!pass){ if(p)p.classList.add("err"); return; }
   S.loginEmail=email;
   S.loginPending=true;   // login explícito: pode redirecionar para "Minha conta"
-  try{ const { error } = await sb.auth.signInWithPassword({ email, password:pass }); if(error){ S.loginPending=false; accErr("E-mail ou senha inválidos."); } }
+  try{ const { error } = await sb.auth.signInWithPassword({ email, password:pass }); if(error){ S.loginPending=false; accErr(traduzErro(error.message)); } }
   catch(err){ S.loginPending=false; accErr("Erro ao entrar. Tente de novo."); }
 }
 async function doSignup(){
@@ -1302,7 +1319,7 @@ async function doSignup(){
   S.loginPending=true;   // cadastro explícito: pode redirecionar para "Minha conta"
   try{
     const { data, error } = await sb.auth.signUp({ email, password:pass });
-    if(error){ S.loginPending=false; accErr(error.message); return; }
+    if(error){ S.loginPending=false; accErr(traduzErro(error.message)); return; }
     if(!data.session){ S.loginPending=false; S.accStage="login"; render(); accErr("Conta criada! Confirme pelo e-mail (se pedido) e entre."); return; }
   }catch(err){ S.loginPending=false; accErr("Erro ao criar conta."); }
 }
@@ -2078,11 +2095,9 @@ function renderAdminBarbers(){
 }
 function opFail(prefix, err){
   const raw = (err && err.message) ? err.message : String(err);
-  let dica = "";
-  if(/row-level security|permission denied|violates row-level/i.test(raw))
-    dica = "\n\nDica: as políticas de acesso (RLS) do Supabase estão bloqueando a gravação. Fale com o administrador para liberar a escrita nesta tabela.";
-  try{ window.alert(prefix + "\n\n" + raw + dica); }catch(e){}
-  return prefix + " " + raw;
+  const msg = traduzErro(raw);
+  try{ window.alert(prefix + "\n\n" + msg); }catch(e){}
+  return prefix + " " + msg;
 }
 function barbErr(msg){ const el=document.getElementById("barberr"); if(el){ el.innerHTML=`<div class="errmsg">${msg}</div>`; el.scrollIntoView({block:"center"}); } }
 function nbRead(){
