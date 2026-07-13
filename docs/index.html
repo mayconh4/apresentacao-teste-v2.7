@@ -2122,8 +2122,9 @@ function renderAdminBarbers(){
   const sh = S.barbShop; const links = S.barbLinks||[]; const all = S.allBarbers||[];
   if(S.espEdit){
     const b = S.espEdit.barber;
-    let h = `<div class="eyebrow">Barbeiro · ${b.nome}</div><h1 class="bg">Dados do barbeiro</h1><div class="hint" style="margin-top:-6px;margin-bottom:12px">WhatsApp e especialidades. Os agendamentos chegam no WhatsApp abaixo.</div><div id="barberr"></div>`;
-    h += field("beTel","WhatsApp do barbeiro",{req:false,ph:"(11) 99999-9999",val:(S.espEdit.tel!==undefined?S.espEdit.tel:(b.tel||""))});
+    let h = `<div class="eyebrow">Barbeiro · ${b.nome}</div><h1 class="bg">Editar barbeiro</h1><div class="hint" style="margin-top:-6px;margin-bottom:12px">Nome, WhatsApp e especialidades. Os agendamentos chegam no WhatsApp abaixo.</div><div id="barberr"></div>`;
+    h += field("beNome","Nome do barbeiro",{req:true,ph:"Ex.: Carlos Silva",val:(S.espEdit.nome!==undefined?S.espEdit.nome:(b.nome||""))});
+    h += field("beTel","WhatsApp do barbeiro",{req:false,ph:"(11) 99999-9999",val:(S.espEdit.tel!==undefined?S.espEdit.tel:(b.tel||b.telefone||""))});
     h += `<div class="sllbl" style="margin:8px 0 8px">Especialidades (toque para marcar)</div>`;
     h += espChips(S.espEdit.sel, "beEspTg");
     h += espCustomRow("beEspCustom", "beEspAdd", S.beEspDraft);
@@ -2138,12 +2139,12 @@ function renderAdminBarbers(){
   if(!inShop.length) h += `<div class="lr" style="justify-content:center;color:var(--mut)">Nenhum barbeiro nesta barbearia ainda.</div>`;
   inShop.forEach(function(b){
     h += `<div class="box" style="margin-bottom:10px;border-color:var(--gold)"><div style="display:flex;align-items:center;gap:10px"><div style="flex:1"><div class="nm" style="font-size:15px">${b.nome}</div><div class="sb">${(b.especialidades||[]).join(" · ")||"sem especialidades"}</div></div></div>
-      <div class="fidwrap" style="justify-content:flex-end;gap:8px;margin-top:8px"><button class="btn out small" data-a="admBarbEd:${b.id}">Especialidades</button><button class="btn out small" data-a="admBarbDel:${b.id}">Retirar</button></div></div>`;
+      <div class="fidwrap" style="justify-content:flex-end;gap:8px;margin-top:8px"><button class="btn out small" data-a="admBarbEd:${b.id}">Editar</button><button class="btn out small" data-a="admBarbDel:${b.id}">Retirar</button></div></div>`;
   });
   if(out.length){
     h += `<div class="sllbl" style="margin:16px 0 8px">Outros barbeiros cadastrados</div>`;
     out.forEach(function(b){
-      h += `<div class="box" style="margin-bottom:10px"><div style="display:flex;align-items:center;gap:10px"><div style="flex:1"><div class="nm" style="font-size:15px">${b.nome}</div><div class="sb">${(b.especialidades||[]).join(" · ")}</div></div><button class="btn small" data-a="admBarbAdd:${b.id}">Incluir</button></div></div>`;
+      h += `<div class="box" style="margin-bottom:10px"><div style="display:flex;align-items:center;gap:10px"><div style="flex:1"><div class="nm" style="font-size:15px">${b.nome}</div><div class="sb">${(b.especialidades||[]).join(" · ")}</div></div><button class="btn small" data-a="admBarbAdd:${b.id}">Incluir</button></div><div class="fidwrap" style="justify-content:flex-end;gap:8px;margin-top:8px"><button class="btn out small" data-a="admBarbEd:${b.id}">Editar</button></div></div>`;
     });
   }
   h += `<div class="sllbl" style="margin:16px 0 8px">Novo barbeiro</div>`;
@@ -2223,13 +2224,16 @@ async function admBarbNew(){
 }
 async function beEspSave(){
   const ed = S.espEdit; if(!ed) return;
+  const nomeEl = document.getElementById("beNome");
+  const nome = (nomeEl ? nomeEl.value : (ed.nome!==undefined?ed.nome:(ed.barber.nome||""))).trim();
+  if(!nome){ if(nomeEl){ nomeEl.classList.add("err"); nomeEl.focus(); } barbErr("Informe o nome do barbeiro."); return; }
   const c = document.getElementById("beEspCustom");
   const extra = cleanEsp(c&&c.value);
   if(extra && ed.sel.indexOf(extra)<0) ed.sel.push(extra);
   const telEl = document.getElementById("beTel");
-  const tel = telEl ? telEl.value.trim() : (ed.tel!==undefined?ed.tel:(ed.barber.tel||""));
+  const tel = telEl ? telEl.value.trim() : (ed.tel!==undefined?ed.tel:(ed.barber.tel||ed.barber.telefone||""));
   let err=null;
-  try{ const r = await sb.from("barbers").update({ especialidades: ed.sel, telefone: tel }).eq("id", ed.barber.id); err=r.error; }catch(e){ err=e; }
+  try{ const r = await sb.from("barbers").update({ nome: nome, especialidades: ed.sel, telefone: tel }).eq("id", ed.barber.id); err=r.error; }catch(e){ err=e; }
   if(err){ barbErr(opFail("Não foi possível salvar os dados do barbeiro.", err)); return; }
   S.espEdit=null; S.beEspDraft="";
   await admBarbOpen(S.barbShop.id);
@@ -2519,8 +2523,8 @@ main.addEventListener("click", e=>{
   else if(a.startsWith("admBarb:")){ const p=a.split(":"); admBarbOpen(p[1], p[2]||"admin"); return; }
   else if(a.startsWith("nbEspTg:")){ nbRead(); const k=a.slice(8); S.nbEspSel=S.nbEspSel||[]; const ix=S.nbEspSel.indexOf(k); if(ix>=0) S.nbEspSel.splice(ix,1); else S.nbEspSel.push(k); render(); return; }
   else if(a==="nbEspAdd"){ nbRead(); const v=cleanEsp(S.nbEspDraft); if(v){ S.nbEspSel=S.nbEspSel||[]; if(S.nbEspSel.indexOf(v)<0) S.nbEspSel.push(v); S.nbEspDraft=""; } render(); return; }
-  else if(a.startsWith("beEspTg:")){ const tEl=document.getElementById("beTel"); if(tEl&&S.espEdit) S.espEdit.tel=tEl.value; const c=document.getElementById("beEspCustom"); if(c) S.beEspDraft=c.value; const k=a.slice(8); const sel=S.espEdit.sel; const ix=sel.indexOf(k); if(ix>=0) sel.splice(ix,1); else sel.push(k); render(); return; }
-  else if(a==="beEspAdd"){ const tEl=document.getElementById("beTel"); if(tEl&&S.espEdit) S.espEdit.tel=tEl.value; const c=document.getElementById("beEspCustom"); const v=cleanEsp(c&&c.value); if(v && S.espEdit && S.espEdit.sel.indexOf(v)<0) S.espEdit.sel.push(v); S.beEspDraft=""; render(); return; }
+  else if(a.startsWith("beEspTg:")){ const nEl=document.getElementById("beNome"); if(nEl&&S.espEdit) S.espEdit.nome=nEl.value; const tEl=document.getElementById("beTel"); if(tEl&&S.espEdit) S.espEdit.tel=tEl.value; const c=document.getElementById("beEspCustom"); if(c) S.beEspDraft=c.value; const k=a.slice(8); const sel=S.espEdit.sel; const ix=sel.indexOf(k); if(ix>=0) sel.splice(ix,1); else sel.push(k); render(); return; }
+  else if(a==="beEspAdd"){ const nEl=document.getElementById("beNome"); if(nEl&&S.espEdit) S.espEdit.nome=nEl.value; const tEl=document.getElementById("beTel"); if(tEl&&S.espEdit) S.espEdit.tel=tEl.value; const c=document.getElementById("beEspCustom"); const v=cleanEsp(c&&c.value); if(v && S.espEdit && S.espEdit.sel.indexOf(v)<0) S.espEdit.sel.push(v); S.beEspDraft=""; render(); return; }
   else if(a==="beEspSave"){ beEspSave(); return; }
   else if(a==="beEspCancel"){ S.espEdit=null; S.beEspDraft=""; render(); return; }
   else if(a==="admEditSave"){ admEditSave(); return; }
