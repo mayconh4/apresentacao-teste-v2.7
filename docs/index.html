@@ -387,6 +387,10 @@ function lsSet(k,v){ try{ if(v===null||v==="") localStorage.removeItem(k+"_"+(S.
 // foto da barbearia, por id da loja (o cliente vê no fluxo de agendamento)
 function getShopFoto(id){ try{ return localStorage.getItem("sb_shopfoto_"+id)||""; }catch(e){ return ""; } }
 function setShopFoto(id, data){ try{ localStorage.setItem("sb_shopfoto_"+id, data); }catch(e){} }
+// foto de cada barbeiro, por id (o cliente vê na escolha do barbeiro)
+function getBarberFoto(id){ try{ return localStorage.getItem("sb_barberfoto_"+id)||""; }catch(e){ return ""; } }
+function setBarberFoto(id, data){ try{ localStorage.setItem("sb_barberfoto_"+id, data); }catch(e){} }
+function barberAvatarHtml(b, size){ size=size||44; const f=(b&&b.foto)||getBarberFoto(b&&b.id); if(f) return `<img src="${f}" alt="" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;flex:none">`; return `<div class="av" style="width:${size}px;height:${size}px;flex:none">${ini((b&&b.nome)||"?")}</div>`; }
 // avatar de terceiros (equipe/rede): usa a foto do perfil se existir, senão iniciais
 function pAvatar(p, size){
   size = size||44;
@@ -406,6 +410,19 @@ function applyAvatar(scope, data){
     setShopFoto(sid, data);
     try{ sb.from("shops").update({ foto:data }).eq("id", sid).then(function(r){ if(r&&r.error) console.log("foto no banco:", r.error.message); }); }catch(err){}
     admEditRead(); render(); return;
+  }
+  // editor do barbeiro (admin/dono): grava a foto no barbeiro daquela equipe
+  if(scope==="barberedit" && S.espEdit && S.espEdit.barber){
+    const bid = S.espEdit.barber.id;
+    // preserva nome/WhatsApp/especialidade já digitados antes de redesenhar
+    const nEl=document.getElementById("beNome"); if(nEl) S.espEdit.nome=nEl.value;
+    const tEl=document.getElementById("beTel"); if(tEl) S.espEdit.tel=tEl.value;
+    const cEl=document.getElementById("beEspCustom"); if(cEl) S.beEspDraft=cEl.value;
+    S.espEdit.barber.foto = data;
+    setBarberFoto(bid, data);
+    const bg = barbers.find(function(x){ return x.id===bid; }); if(bg) bg.foto = data;
+    try{ sb.from("barbers").update({ foto:data }).eq("id", bid).then(function(r){ if(r&&r.error) console.log("foto do barbeiro:", r.error.message); }); }catch(err){}
+    render(); return;
   }
   // foto do studio também fica visível para o cliente no fluxo de agendamento
   if(scope==="studio" && S.dashShop){
@@ -694,7 +711,8 @@ function renderClient(){
   if(S.step===1){
     const shopBarbers = barbers.filter(b=> S.shop.barbers.includes(b.id));
     h+=`<div class="eyebrow">${S.shop.nome} · Passo 1 de 4</div><h1>Quem corta seu cabelo?</h1>`;
-    shopBarbers.forEach(b=> h+=`<div class="tile ${S.barber===b.id?'sel':''}" data-a="b:${b.id}"><div class="ic">${ini(b.nome)}</div><div><div class="nm">${b.nome}</div><div class="tags">${b.esp.join(" · ")}</div></div><div class="ar">&rsaquo;</div></div>`);
+    shopBarbers.forEach(function(b){ const bf=b.foto||getBarberFoto(b.id);
+      h+=`<div class="tile ${S.barber===b.id?'sel':''}" data-a="b:${b.id}"><div class="ic"${bf?' style="padding:0;overflow:hidden"':''}>${bf?`<img src="${bf}" alt="" style="width:100%;height:100%;object-fit:cover">`:ini(b.nome)}</div><div><div class="nm">${b.nome}</div><div class="tags">${b.esp.join(" · ")}</div></div><div class="ar">&rsaquo;</div></div>`; });
     h+=`<div class="tile ${S.barber==='any'?'sel':''}" data-a="b:any"><div class="ic">${ICONS.star}</div><div><div class="nm">Qualquer um</div><div class="sb">Primeiro horário livre</div></div><div class="ar">&rsaquo;</div></div>`;
     h+=`<div class="hint" style="text-align:center;cursor:pointer" data-a="trocashop">Trocar de barbearia</div>`;
   }
@@ -2122,7 +2140,12 @@ function renderAdminBarbers(){
   const sh = S.barbShop; const links = S.barbLinks||[]; const all = S.allBarbers||[];
   if(S.espEdit){
     const b = S.espEdit.barber;
-    let h = `<div class="eyebrow">Barbeiro · ${b.nome}</div><h1 class="bg">Editar barbeiro</h1><div class="hint" style="margin-top:-6px;margin-bottom:12px">Nome, WhatsApp e especialidades. Os agendamentos chegam no WhatsApp abaixo.</div><div id="barberr"></div>`;
+    let h = `<div class="eyebrow">Barbeiro · ${b.nome}</div><h1 class="bg">Editar barbeiro</h1><div class="hint" style="margin-top:-6px;margin-bottom:12px">Foto, nome, WhatsApp e especialidades. Os agendamentos chegam no WhatsApp abaixo.</div><div id="barberr"></div>`;
+    const bf = b.foto || getBarberFoto(b.id);
+    h += `<div style="display:flex;align-items:center;gap:14px;margin:2px 0 14px">${
+      bf ? `<img src="${bf}" alt="" style="width:64px;height:64px;border-radius:50%;object-fit:cover;flex:none">`
+         : `<div class="av" style="width:64px;height:64px;flex:none">${ini(b.nome||"?")}</div>`}
+      <label class="btn out small" style="margin:0;cursor:pointer">${bf?'Trocar foto':'Adicionar foto'}<input type="file" accept="image/*" data-av="barberedit" style="display:none"></label></div>`;
     h += field("beNome","Nome do barbeiro",{req:true,ph:"Ex.: Carlos Silva",val:(S.espEdit.nome!==undefined?S.espEdit.nome:(b.nome||""))});
     h += field("beTel","WhatsApp do barbeiro",{req:false,ph:"(11) 99999-9999",val:(S.espEdit.tel!==undefined?S.espEdit.tel:(b.tel||b.telefone||""))});
     h += `<div class="sllbl" style="margin:8px 0 8px">Especialidades (toque para marcar)</div>`;
@@ -2138,13 +2161,13 @@ function renderAdminBarbers(){
   h += `<div class="sllbl" style="margin:4px 0 8px">Na equipe</div>`;
   if(!inShop.length) h += `<div class="lr" style="justify-content:center;color:var(--mut)">Nenhum barbeiro nesta barbearia ainda.</div>`;
   inShop.forEach(function(b){
-    h += `<div class="box" style="margin-bottom:10px;border-color:var(--gold)"><div style="display:flex;align-items:center;gap:10px"><div style="flex:1"><div class="nm" style="font-size:15px">${b.nome}</div><div class="sb">${(b.especialidades||[]).join(" · ")||"sem especialidades"}</div></div></div>
+    h += `<div class="box" style="margin-bottom:10px;border-color:var(--gold)"><div style="display:flex;align-items:center;gap:10px">${barberAvatarHtml(b,44)}<div style="flex:1"><div class="nm" style="font-size:15px">${b.nome}</div><div class="sb">${(b.especialidades||[]).join(" · ")||"sem especialidades"}</div></div></div>
       <div class="fidwrap" style="justify-content:flex-end;gap:8px;margin-top:8px"><button class="btn out small" data-a="admBarbEd:${b.id}">Editar</button><button class="btn out small" data-a="admBarbDel:${b.id}">Retirar</button></div></div>`;
   });
   if(out.length){
     h += `<div class="sllbl" style="margin:16px 0 8px">Outros barbeiros cadastrados</div>`;
     out.forEach(function(b){
-      h += `<div class="box" style="margin-bottom:10px"><div style="display:flex;align-items:center;gap:10px"><div style="flex:1"><div class="nm" style="font-size:15px">${b.nome}</div><div class="sb">${(b.especialidades||[]).join(" · ")}</div></div><button class="btn small" data-a="admBarbAdd:${b.id}">Incluir</button></div><div class="fidwrap" style="justify-content:flex-end;gap:8px;margin-top:8px"><button class="btn out small" data-a="admBarbEd:${b.id}">Editar</button></div></div>`;
+      h += `<div class="box" style="margin-bottom:10px"><div style="display:flex;align-items:center;gap:10px">${barberAvatarHtml(b,44)}<div style="flex:1"><div class="nm" style="font-size:15px">${b.nome}</div><div class="sb">${(b.especialidades||[]).join(" · ")}</div></div><button class="btn small" data-a="admBarbAdd:${b.id}">Incluir</button></div><div class="fidwrap" style="justify-content:flex-end;gap:8px;margin-top:8px"><button class="btn out small" data-a="admBarbEd:${b.id}">Editar</button></div></div>`;
     });
   }
   h += `<div class="sllbl" style="margin:16px 0 8px">Novo barbeiro</div>`;
@@ -2663,7 +2686,7 @@ async function hydrate(){
         barbers: links.filter(l=>l.shop_id===s.id).map(l=>l.barber_id), slots:true, abre:s.abre, fecha:s.fecha, almocoIni:s.almoco_ini, almocoFim:s.almoco_fim, dias:s.dias }));
     }
     if(rBarbers.data && rBarbers.data.length){
-      barbers = rBarbers.data.map(b=>({ id:b.id, nome:b.nome, esp:b.especialidades||[], tel:b.telefone||'', pct:0.4 }));
+      barbers = rBarbers.data.map(b=>({ id:b.id, nome:b.nome, esp:b.especialidades||[], tel:b.telefone||'', foto:b.foto||getBarberFoto(b.id)||'', pct:0.4 }));
     }
     if(rSvcs.data && rSvcs.data.length){
       services = rSvcs.data.map(s=>({ id:s.id, nome:s.nome, preco:Number(s.preco), dur:s.duracao_min, shop_id:s.shop_id, cat:s.categoria }));
